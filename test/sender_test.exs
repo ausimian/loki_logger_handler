@@ -23,14 +23,14 @@ defmodule LokiLoggerHandler.SenderTest do
   end
 
   # Helper to start storage with the right options per strategy
-  defp start_storage(:disk, name, dir) do
-    Cub.start_link(name: name, data_dir: dir)
-    {:ok, name}
+  defp start_storage(:disk, handler_id, dir) do
+    Cub.start_link(handler_id: handler_id, data_dir: dir)
+    {:ok, handler_id}
   end
 
-  defp start_storage(:memory, name, _dir) do
-    Ets.start_link(name: name)
-    {:ok, name}
+  defp start_storage(:memory, handler_id, _dir) do
+    Ets.start_link(handler_id: handler_id)
+    {:ok, handler_id}
   end
 
   defp sample_entry(message) do
@@ -46,14 +46,13 @@ defmodule LokiLoggerHandler.SenderTest do
   describe "start_link/1" do
     test "starts a sender process with required options", %{strategy: strategy, mod: mod} do
       dir = Path.join(@test_dir, "#{strategy}_start_link_test")
-      storage_name = :"storage_#{strategy}_start_#{System.unique_integer([:positive])}"
-      {:ok, storage} = start_storage(strategy, storage_name, dir)
+      handler_id = :"handler_#{strategy}_start_#{System.unique_integer([:positive])}"
+      {:ok, _storage} = start_storage(strategy, handler_id, dir)
       {:ok, fake} = FakeLoki.start_link()
 
       {:ok, pid} =
         Sender.start_link(
-          name: :"test_sender_start_#{strategy}_#{System.unique_integer([:positive])}",
-          storage: storage,
+          handler_id: handler_id,
           storage_module: mod,
           loki_url: FakeLoki.url(fake)
         )
@@ -61,20 +60,19 @@ defmodule LokiLoggerHandler.SenderTest do
       assert Process.alive?(pid)
 
       GenServer.stop(pid)
-      mod.stop(storage)
+      mod.stop(handler_id)
       FakeLoki.stop(fake)
     end
 
     test "uses default values for optional parameters", %{strategy: strategy, mod: mod} do
       dir = Path.join(@test_dir, "#{strategy}_defaults_test")
-      storage_name = :"storage_#{strategy}_defaults_#{System.unique_integer([:positive])}"
-      {:ok, storage} = start_storage(strategy, storage_name, dir)
+      handler_id = :"handler_#{strategy}_defaults_#{System.unique_integer([:positive])}"
+      {:ok, _storage} = start_storage(strategy, handler_id, dir)
       {:ok, fake} = FakeLoki.start_link()
 
       {:ok, pid} =
         Sender.start_link(
-          name: :"test_sender_defaults_#{strategy}_#{System.unique_integer([:positive])}",
-          storage: storage,
+          handler_id: handler_id,
           storage_module: mod,
           loki_url: FakeLoki.url(fake)
         )
@@ -88,7 +86,7 @@ defmodule LokiLoggerHandler.SenderTest do
       assert state.consecutive_failures == 0
 
       GenServer.stop(pid)
-      mod.stop(storage)
+      mod.stop(handler_id)
       FakeLoki.stop(fake)
     end
   end
@@ -96,16 +94,13 @@ defmodule LokiLoggerHandler.SenderTest do
   describe "get_state/1" do
     test "returns current state as a map", %{strategy: strategy, mod: mod} do
       dir = Path.join(@test_dir, "#{strategy}_get_state_test")
-      storage_name = :"storage_#{strategy}_state_#{System.unique_integer([:positive])}"
-      {:ok, storage} = start_storage(strategy, storage_name, dir)
+      handler_id = :"handler_#{strategy}_state_#{System.unique_integer([:positive])}"
+      {:ok, _storage} = start_storage(strategy, handler_id, dir)
       {:ok, fake} = FakeLoki.start_link()
-
-      sender_name = :"test_sender_state_#{strategy}_#{System.unique_integer([:positive])}"
 
       {:ok, pid} =
         Sender.start_link(
-          name: sender_name,
-          storage: storage,
+          handler_id: handler_id,
           storage_module: mod,
           loki_url: FakeLoki.url(fake),
           batch_size: 50,
@@ -115,14 +110,14 @@ defmodule LokiLoggerHandler.SenderTest do
       state = Sender.get_state(pid)
 
       assert is_map(state)
-      assert state.name == sender_name
+      assert state.handler_id == handler_id
       assert state.batch_size == 50
       assert state.batch_interval_ms == 1000
       assert state.loki_url == FakeLoki.url(fake)
       assert is_reference(state.timer_ref)
 
       GenServer.stop(pid)
-      mod.stop(storage)
+      mod.stop(handler_id)
       FakeLoki.stop(fake)
     end
   end
@@ -130,14 +125,13 @@ defmodule LokiLoggerHandler.SenderTest do
   describe "flush/1" do
     test "sends all pending entries immediately", %{strategy: strategy, mod: mod} do
       dir = Path.join(@test_dir, "#{strategy}_flush_test")
-      storage_name = :"storage_#{strategy}_flush_#{System.unique_integer([:positive])}"
-      {:ok, storage} = start_storage(strategy, storage_name, dir)
+      handler_id = :"handler_#{strategy}_flush_#{System.unique_integer([:positive])}"
+      {:ok, _storage} = start_storage(strategy, handler_id, dir)
       {:ok, fake} = FakeLoki.start_link()
 
       {:ok, pid} =
         Sender.start_link(
-          name: :"test_sender_flush_#{strategy}_#{System.unique_integer([:positive])}",
-          storage: storage,
+          handler_id: handler_id,
           storage_module: mod,
           loki_url: FakeLoki.url(fake),
           batch_interval_ms: 60_000
@@ -145,95 +139,92 @@ defmodule LokiLoggerHandler.SenderTest do
 
       # Add entries to storage
       for i <- 1..5 do
-        mod.store(storage, sample_entry("message #{i}"))
+        mod.store(handler_id, sample_entry("message #{i}"))
       end
 
       # Wait for casts to be processed
       Process.sleep(20)
 
-      assert mod.count(storage) == 5
+      assert mod.count(handler_id) == 5
 
       # Flush should send all entries
       assert :ok = Sender.flush(pid)
 
       # Entries should be sent and deleted from storage
-      assert mod.count(storage) == 0
+      assert mod.count(handler_id) == 0
 
       # FakeLoki should have received them
       entries = FakeLoki.get_entries(fake)
       assert length(entries) >= 1
 
       GenServer.stop(pid)
-      mod.stop(storage)
+      mod.stop(handler_id)
       FakeLoki.stop(fake)
     end
 
     test "returns :ok when storage is empty", %{strategy: strategy, mod: mod} do
       dir = Path.join(@test_dir, "#{strategy}_flush_empty_test")
-      storage_name = :"storage_#{strategy}_flush_empty_#{System.unique_integer([:positive])}"
-      {:ok, storage} = start_storage(strategy, storage_name, dir)
+      handler_id = :"handler_#{strategy}_flush_empty_#{System.unique_integer([:positive])}"
+      {:ok, _storage} = start_storage(strategy, handler_id, dir)
       {:ok, fake} = FakeLoki.start_link()
 
       {:ok, pid} =
         Sender.start_link(
-          name: :"test_sender_flush_empty_#{strategy}_#{System.unique_integer([:positive])}",
-          storage: storage,
+          handler_id: handler_id,
           storage_module: mod,
           loki_url: FakeLoki.url(fake)
         )
 
-      assert mod.count(storage) == 0
+      assert mod.count(handler_id) == 0
       assert :ok = Sender.flush(pid)
 
       GenServer.stop(pid)
-      mod.stop(storage)
+      mod.stop(handler_id)
       FakeLoki.stop(fake)
     end
 
     test "returns error when Loki is unavailable", %{strategy: strategy, mod: mod} do
       dir = Path.join(@test_dir, "#{strategy}_flush_error_test")
-      storage_name = :"storage_#{strategy}_flush_error_#{System.unique_integer([:positive])}"
-      {:ok, storage} = start_storage(strategy, storage_name, dir)
+      handler_id = :"handler_#{strategy}_flush_error_#{System.unique_integer([:positive])}"
+      {:ok, _storage} = start_storage(strategy, handler_id, dir)
 
       {:ok, pid} =
         Sender.start_link(
-          name: :"test_sender_flush_error_#{strategy}_#{System.unique_integer([:positive])}",
-          storage: storage,
+          handler_id: handler_id,
           storage_module: mod,
           # No server listening on this port
           loki_url: "http://localhost:59998"
         )
 
-      mod.store(storage, sample_entry("test message"))
+      mod.store(handler_id, sample_entry("test message"))
       Process.sleep(10)
 
       result = Sender.flush(pid)
       assert {:error, {:request_failed, _}} = result
 
       # Entry should still be in storage (not deleted on failure)
-      assert mod.count(storage) == 1
+      assert mod.count(handler_id) == 1
 
       GenServer.stop(pid)
-      mod.stop(storage)
+      mod.stop(handler_id)
     end
   end
 
   describe "exponential backoff" do
     test "increments consecutive_failures on send failure", %{strategy: strategy, mod: mod} do
       dir = Path.join(@test_dir, "#{strategy}_backoff_test")
-      storage_name = :"storage_#{strategy}_backoff_#{System.unique_integer([:positive])}"
-      {:ok, storage} = start_storage(strategy, storage_name, dir)
+      handler_id = :"handler_#{strategy}_backoff_#{System.unique_integer([:positive])}"
+      {:ok, _storage} = start_storage(strategy, handler_id, dir)
 
       {:ok, pid} =
         Sender.start_link(
-          name: :"test_sender_backoff_#{strategy}_#{System.unique_integer([:positive])}",
-          storage: storage,
+          handler_id: handler_id,
           storage_module: mod,
           loki_url: "http://localhost:59997",
           batch_interval_ms: 60_000
         )
 
-      mod.store(storage, sample_entry("test"))
+      mod.store(handler_id, sample_entry("test"))
       Process.sleep(10)
 
       state_before = Sender.get_state(pid)
@@ -252,25 +243,24 @@ defmodule LokiLoggerHandler.SenderTest do
       assert state_after_2.consecutive_failures == 2
 
       GenServer.stop(pid)
-      mod.stop(storage)
+      mod.stop(handler_id)
     end
 
     test "resets consecutive_failures on successful send", %{strategy: strategy, mod: mod} do
       dir = Path.join(@test_dir, "#{strategy}_backoff_reset_test")
-      storage_name = :"storage_#{strategy}_backoff_reset_#{System.unique_integer([:positive])}"
-      {:ok, storage} = start_storage(strategy, storage_name, dir)
+      handler_id = :"handler_#{strategy}_backoff_reset_#{System.unique_integer([:positive])}"
+      {:ok, _storage} = start_storage(strategy, handler_id, dir)
       {:ok, fake} = FakeLoki.start_link()
 
       {:ok, pid} =
         Sender.start_link(
-          name: :"test_sender_backoff_reset_#{strategy}_#{System.unique_integer([:positive])}",
-          storage: storage,
+          handler_id: handler_id,
           storage_module: mod,
           loki_url: FakeLoki.url(fake),
           batch_interval_ms: 60_000
         )
 
-      mod.store(storage, sample_entry("test"))
+      mod.store(handler_id, sample_entry("test"))
       Process.sleep(10)
 
       # Successful flush
@@ -280,7 +270,7 @@ defmodule LokiLoggerHandler.SenderTest do
       assert state.consecutive_failures == 0
 
       GenServer.stop(pid)
-      mod.stop(storage)
+      mod.stop(handler_id)
       FakeLoki.stop(fake)
     end
   end
@@ -288,14 +278,13 @@ defmodule LokiLoggerHandler.SenderTest do
   describe "automatic batch sending" do
     test "sends batch when timer fires and entries exist", %{strategy: strategy, mod: mod} do
       dir = Path.join(@test_dir, "#{strategy}_auto_batch_test")
-      storage_name = :"storage_#{strategy}_auto_batch_#{System.unique_integer([:positive])}"
-      {:ok, storage} = start_storage(strategy, storage_name, dir)
+      handler_id = :"handler_#{strategy}_auto_batch_#{System.unique_integer([:positive])}"
+      {:ok, _storage} = start_storage(strategy, handler_id, dir)
       {:ok, fake} = FakeLoki.start_link()
 
       {:ok, pid} =
         Sender.start_link(
-          name: :"test_sender_auto_#{strategy}_#{System.unique_integer([:positive])}",
-          storage: storage,
+          handler_id: handler_id,
           storage_module: mod,
           loki_url: FakeLoki.url(fake),
           batch_interval_ms: 100
@@ -303,33 +292,30 @@ defmodule LokiLoggerHandler.SenderTest do
 
       # Add entries
       for i <- 1..3 do
-        mod.store(storage, sample_entry("auto message #{i}"))
+        mod.store(handler_id, sample_entry("auto message #{i}"))
       end
 
       # Wait for automatic batch
       Process.sleep(250)
 
       # Entries should have been sent
-      assert mod.count(storage) == 0
+      assert mod.count(handler_id) == 0
       assert length(FakeLoki.get_entries(fake)) >= 1
 
       GenServer.stop(pid)
-      mod.stop(storage)
+      mod.stop(handler_id)
       FakeLoki.stop(fake)
     end
 
     test "does not send when storage is empty", %{strategy: strategy, mod: mod} do
       dir = Path.join(@test_dir, "#{strategy}_no_send_empty_test")
-      storage_name = :"storage_#{strategy}_no_send_#{System.unique_integer([:positive])}"
-      {:ok, storage} = start_storage(strategy, storage_name, dir)
+      handler_id = :"handler_#{strategy}_no_send_#{System.unique_integer([:positive])}"
+      {:ok, _storage} = start_storage(strategy, handler_id, dir)
       {:ok, fake} = FakeLoki.start_link()
 
-      sender_name = :"test_sender_no_send_#{strategy}_#{System.unique_integer([:positive])}"
-
-      {:ok, _pid} =
+      {:ok, pid} =
         Sender.start_link(
-          name: sender_name,
-          storage: storage,
+          handler_id: handler_id,
           storage_module: mod,
           loki_url: FakeLoki.url(fake),
           batch_interval_ms: 50
@@ -341,21 +327,20 @@ defmodule LokiLoggerHandler.SenderTest do
       # No entries should have been sent (none existed)
       assert FakeLoki.get_entries(fake) == []
 
-      GenServer.stop(sender_name)
-      mod.stop(storage)
+      GenServer.stop(pid)
+      mod.stop(handler_id)
       FakeLoki.stop(fake)
     end
 
     test "respects batch_size limit", %{strategy: strategy, mod: mod} do
       dir = Path.join(@test_dir, "#{strategy}_batch_size_test")
-      storage_name = :"storage_#{strategy}_batch_size_#{System.unique_integer([:positive])}"
-      {:ok, storage} = start_storage(strategy, storage_name, dir)
+      handler_id = :"handler_#{strategy}_batch_size_#{System.unique_integer([:positive])}"
+      {:ok, _storage} = start_storage(strategy, handler_id, dir)
       {:ok, fake} = FakeLoki.start_link()
 
       {:ok, pid} =
         Sender.start_link(
-          name: :"test_sender_batch_size_#{strategy}_#{System.unique_integer([:positive])}",
-          storage: storage,
+          handler_id: handler_id,
           storage_module: mod,
           loki_url: FakeLoki.url(fake),
           batch_size: 3,
@@ -364,16 +349,16 @@ defmodule LokiLoggerHandler.SenderTest do
 
       # Add more entries than batch size
       for i <- 1..10 do
-        mod.store(storage, sample_entry("batch message #{i}"))
+        mod.store(handler_id, sample_entry("batch message #{i}"))
       end
 
       # Wait for batches to be sent
       Process.sleep(650)
 
-      assert mod.count(storage) == 0
+      assert mod.count(handler_id) == 0
 
       GenServer.stop(pid)
-      mod.stop(storage)
+      mod.stop(handler_id)
       FakeLoki.stop(fake)
     end
   end
@@ -381,14 +366,13 @@ defmodule LokiLoggerHandler.SenderTest do
   describe "backoff timing" do
     test "uses normal interval when no failures", %{strategy: strategy, mod: mod} do
       dir = Path.join(@test_dir, "#{strategy}_interval_normal_test")
-      storage_name = :"storage_#{strategy}_interval_#{System.unique_integer([:positive])}"
-      {:ok, storage} = start_storage(strategy, storage_name, dir)
+      handler_id = :"handler_#{strategy}_interval_#{System.unique_integer([:positive])}"
+      {:ok, _storage} = start_storage(strategy, handler_id, dir)
       {:ok, fake} = FakeLoki.start_link()
 
       {:ok, pid} =
         Sender.start_link(
-          name: :"test_sender_interval_#{strategy}_#{System.unique_integer([:positive])}",
-          storage: storage,
+          handler_id: handler_id,
           storage_module: mod,
           loki_url: FakeLoki.url(fake),
           batch_interval_ms: 100,
@@ -399,25 +383,24 @@ defmodule LokiLoggerHandler.SenderTest do
       assert state.consecutive_failures == 0
 
       # The timer should fire at normal interval (100ms)
-      mod.store(storage, sample_entry("test"))
+      mod.store(handler_id, sample_entry("test"))
       Process.sleep(200)
 
-      assert mod.count(storage) == 0
+      assert mod.count(handler_id) == 0
 
       GenServer.stop(pid)
-      mod.stop(storage)
+      mod.stop(handler_id)
       FakeLoki.stop(fake)
     end
 
     test "applies exponential backoff after failures", %{strategy: strategy, mod: mod} do
       dir = Path.join(@test_dir, "#{strategy}_backoff_exp_test")
-      storage_name = :"storage_#{strategy}_exp_backoff_#{System.unique_integer([:positive])}"
-      {:ok, storage} = start_storage(strategy, storage_name, dir)
+      handler_id = :"handler_#{strategy}_exp_backoff_#{System.unique_integer([:positive])}"
+      {:ok, _storage} = start_storage(strategy, handler_id, dir)
 
       {:ok, pid} =
         Sender.start_link(
-          name: :"test_sender_exp_backoff_#{strategy}_#{System.unique_integer([:positive])}",
-          storage: storage,
+          handler_id: handler_id,
           storage_module: mod,
           loki_url: "http://localhost:59996",
           batch_interval_ms: 50,
@@ -426,7 +409,7 @@ defmodule LokiLoggerHandler.SenderTest do
         )
 
       # Add an entry and let it fail a few times
-      mod.store(storage, sample_entry("backoff test"))
+      mod.store(handler_id, sample_entry("backoff test"))
 
       # Wait for a couple batch cycles to accumulate failures
       Process.sleep(300)
@@ -436,18 +419,17 @@ defmodule LokiLoggerHandler.SenderTest do
       assert state.consecutive_failures > 0
 
       GenServer.stop(pid)
-      mod.stop(storage)
+      mod.stop(handler_id)
     end
 
     test "caps backoff at max_backoff_ms", %{strategy: strategy, mod: mod} do
       dir = Path.join(@test_dir, "#{strategy}_backoff_cap_test")
-      storage_name = :"storage_#{strategy}_cap_backoff_#{System.unique_integer([:positive])}"
-      {:ok, storage} = start_storage(strategy, storage_name, dir)
+      handler_id = :"handler_#{strategy}_cap_backoff_#{System.unique_integer([:positive])}"
+      {:ok, _storage} = start_storage(strategy, handler_id, dir)
 
       {:ok, pid} =
         Sender.start_link(
-          name: :"test_sender_cap_backoff_#{strategy}_#{System.unique_integer([:positive])}",
-          storage: storage,
+          handler_id: handler_id,
           storage_module: mod,
           loki_url: "http://localhost:59995",
           batch_interval_ms: 60_000,
@@ -456,7 +438,7 @@ defmodule LokiLoggerHandler.SenderTest do
         )
 
       # Add entry and cause many failures
-      mod.store(storage, sample_entry("cap test"))
+      mod.store(handler_id, sample_entry("cap test"))
       Process.sleep(10)
 
       # Let it fail multiple times
@@ -468,21 +450,20 @@ defmodule LokiLoggerHandler.SenderTest do
       assert state.consecutive_failures == 5
 
       GenServer.stop(pid)
-      mod.stop(storage)
+      mod.stop(handler_id)
     end
   end
 
   describe "batch_check timer" do
     test "continues scheduling after empty check", %{strategy: strategy, mod: mod} do
       dir = Path.join(@test_dir, "#{strategy}_timer_continue_test")
-      storage_name = :"storage_#{strategy}_timer_#{System.unique_integer([:positive])}"
-      {:ok, storage} = start_storage(strategy, storage_name, dir)
+      handler_id = :"handler_#{strategy}_timer_#{System.unique_integer([:positive])}"
+      {:ok, _storage} = start_storage(strategy, handler_id, dir)
       {:ok, fake} = FakeLoki.start_link()
 
       {:ok, pid} =
         Sender.start_link(
-          name: :"test_sender_timer_#{strategy}_#{System.unique_integer([:positive])}",
-          storage: storage,
+          handler_id: handler_id,
           storage_module: mod,
           loki_url: FakeLoki.url(fake),
           batch_interval_ms: 50
@@ -492,14 +473,14 @@ defmodule LokiLoggerHandler.SenderTest do
       Process.sleep(200)
 
       # Now add an entry - should still be sent on next timer
-      mod.store(storage, sample_entry("delayed entry"))
+      mod.store(handler_id, sample_entry("delayed entry"))
       Process.sleep(100)
 
-      assert mod.count(storage) == 0
+      assert mod.count(handler_id) == 0
       assert length(FakeLoki.get_entries(fake)) >= 1
 
       GenServer.stop(pid)
-      mod.stop(storage)
+      mod.stop(handler_id)
       FakeLoki.stop(fake)
     end
   end

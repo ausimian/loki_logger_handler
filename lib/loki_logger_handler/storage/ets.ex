@@ -5,98 +5,84 @@ defmodule LokiLoggerHandler.Storage.Ets do
   # Logs are stored with monotonic timestamp keys to ensure ordering.
   # Unlike CubDB, this storage is not persistent - logs are lost on restart.
   #
-  # The ETS table is public so read operations (fetch_batch, count) can bypass
-  # the GenServer for better performance. Write operations still go through
-  # the GenServer to enforce max_buffer_size.
+  # The ETS table is public and named after the handler_id, so read operations
+  # (fetch_batch, count, delete_up_to) can access it directly for better performance.
+  # Write operations (store) go through the GenServer to enforce max_buffer_size.
 
   @moduledoc false
 
   use GenServer
 
-  defstruct [:name, :table, :max_buffer_size]
+  defstruct [:handler_id, :table, :max_buffer_size]
 
   # Client API
 
   # Starts a Storage process linked to the current process.
   #
   # Options:
-  #   * :name - Required. The name to register the process under.
+  #   * :handler_id - Required. Used as the ETS table name and for Registry.
   #   * :max_buffer_size - Optional. Maximum entries before dropping oldest. Default: 10_000.
   @doc false
   def start_link(opts) do
-    name = Keyword.fetch!(opts, :name)
+    handler_id = Keyword.fetch!(opts, :handler_id)
+    name = LokiLoggerHandler.Application.via(__MODULE__, handler_id)
     GenServer.start_link(__MODULE__, opts, name: name, hibernate_after: 15_000)
   end
 
   # Stores a log entry with an auto-generated monotonic key.
   # Goes through GenServer to enforce max_buffer_size.
+  # The handler_id is used directly as the ETS table name.
   @doc false
-  @spec store(GenServer.server(), map()) :: :ok
-  def store(server, entry) do
-    GenServer.cast(server, {:store, entry})
+  @spec store(atom(), map()) :: :ok
+  def store(handler_id, entry) do
+    GenServer.cast({:via, Registry, {LokiLoggerHandler.Registry, {__MODULE__, handler_id}}}, {:store, entry})
   end
 
   # Fetches up to `limit` entries from the beginning of the log.
-  # Accesses ETS directly for better performance.
+  # Accesses ETS directly using handler_id as the table name.
   # Returns a list of {key, entry} tuples ordered by key.
   @doc false
-  @spec fetch_batch(GenServer.server(), pos_integer()) :: [{tuple(), map()}]
-  def fetch_batch(server, limit) do
-    table = get_table(server)
-    fetch_first_n(table, limit)
+  @spec fetch_batch(atom(), pos_integer()) :: [{tuple(), map()}]
+  def fetch_batch(handler_id, limit) do
+    fetch_first_n(handler_id, limit)
   end
 
   # Deletes all entries with keys less than or equal to max_key.
-  # Accesses ETS directly for better performance.
+  # Accesses ETS directly using handler_id as the table name.
   @doc false
-  @spec delete_up_to(GenServer.server(), tuple()) :: :ok
-  def delete_up_to(server, max_key) do
-    table = get_table(server)
-    delete_keys_up_to(table, max_key)
+  @spec delete_up_to(atom(), tuple()) :: :ok
+  def delete_up_to(handler_id, max_key) do
+    delete_keys_up_to(handler_id, max_key)
     :ok
   end
 
   # Returns the current count of entries in storage.
-  # Accesses ETS directly for better performance.
+  # Accesses ETS directly using handler_id as the table name.
   @doc false
-  @spec count(GenServer.server()) :: non_neg_integer()
-  def count(server) do
-    table = get_table(server)
-    :ets.info(table, :size)
+  @spec count(atom()) :: non_neg_integer()
+  def count(handler_id) do
+    :ets.info(handler_id, :size)
   end
 
   # Stops the Storage process.
   @doc false
-  @spec stop(GenServer.server()) :: :ok
-  def stop(server) do
-    GenServer.stop(server)
-  end
-
-  # Returns the ETS table reference for direct access.
-  # Uses :persistent_term for O(1) lookup.
-  defp get_table(server) when is_atom(server) do
-    :persistent_term.get({__MODULE__, server})
-  end
-
-  defp get_table(server) when is_pid(server) do
-    GenServer.call(server, :get_table)
+  @spec stop(atom()) :: :ok
+  def stop(handler_id) do
+    GenServer.stop({:via, Registry, {LokiLoggerHandler.Registry, {__MODULE__, handler_id}}})
   end
 
   # Server Callbacks
 
   @impl true
   def init(opts) do
-    name = Keyword.fetch!(opts, :name)
+    handler_id = Keyword.fetch!(opts, :handler_id)
     max_buffer_size = Keyword.get(opts, :max_buffer_size, 10_000)
 
-    # Create public ordered_set for direct client access
-    table = :ets.new(name, [:ordered_set, :public, :named_table])
-
-    # Store table reference in persistent_term for fast lookup
-    :persistent_term.put({__MODULE__, name}, table)
+    # Create public ordered_set with handler_id as the table name
+    table = :ets.new(handler_id, [:ordered_set, :public, :named_table])
 
     state = %__MODULE__{
-      name: name,
+      handler_id: handler_id,
       table: table,
       max_buffer_size: max_buffer_size
     }
@@ -116,15 +102,7 @@ defmodule LokiLoggerHandler.Storage.Ets do
   end
 
   @impl true
-  def handle_call(:get_table, _from, state) do
-    {:reply, state.table, state}
-  end
-
-  @impl true
   def terminate(_reason, state) do
-    # Clean up persistent_term entry
-    :persistent_term.erase({__MODULE__, state.name})
-
     if state.table do
       :ets.delete(state.table)
     end

@@ -41,17 +41,17 @@ formatted_entry = Formatter.format(sample_event, labels, structured_metadata)
 cub_dir = Path.join(System.tmp_dir!(), "loki_bench_cub_#{System.unique_integer()}")
 File.mkdir_p!(cub_dir)
 
-{:ok, cub_storage} =
+{:ok, _cub_storage} =
   Cub.start_link(
-    name: :bench_cub_storage,
+    handler_id: :bench_cub_storage,
     data_dir: cub_dir,
     max_buffer_size: 100_000
   )
 
 # Setup for ETS storage benchmark
-{:ok, ets_storage} =
+{:ok, _ets_storage} =
   Ets.start_link(
-    name: :bench_ets_storage,
+    handler_id: :bench_ets_storage,
     max_buffer_size: 100_000
   )
 
@@ -62,17 +62,16 @@ endpoint_cub_url = CountingEndpoint.url(endpoint_cub)
 cub_pipeline_dir = Path.join(System.tmp_dir!(), "loki_bench_cub_pipeline_#{System.unique_integer()}")
 File.mkdir_p!(cub_pipeline_dir)
 
-{:ok, cub_pipeline_storage} =
+{:ok, _cub_pipeline_storage} =
   Cub.start_link(
-    name: :bench_cub_pipeline_storage,
+    handler_id: :bench_cub_pipeline,
     data_dir: cub_pipeline_dir,
     max_buffer_size: 100_000
   )
 
 {:ok, cub_sender} =
   Sender.start_link(
-    name: :bench_cub_sender,
-    storage: :bench_cub_pipeline_storage,
+    handler_id: :bench_cub_pipeline,
     storage_module: Cub,
     loki_url: endpoint_cub_url,
     batch_size: batch_size,
@@ -85,16 +84,15 @@ File.mkdir_p!(cub_pipeline_dir)
 {:ok, endpoint_ets} = CountingEndpoint.start_link(port: 4999)
 endpoint_ets_url = CountingEndpoint.url(endpoint_ets)
 
-{:ok, ets_pipeline_storage} =
+{:ok, _ets_pipeline_storage} =
   Ets.start_link(
-    name: :bench_ets_pipeline_storage,
+    handler_id: :bench_ets_pipeline,
     max_buffer_size: 100_000
   )
 
 {:ok, ets_sender} =
   Sender.start_link(
-    name: :bench_ets_sender,
-    storage: :bench_ets_pipeline_storage,
+    handler_id: :bench_ets_pipeline,
     storage_module: Ets,
     loki_url: endpoint_ets_url,
     batch_size: batch_size,
@@ -113,25 +111,25 @@ IO.puts("")
 Benchee.run(
   %{
     "CubDB Cub.store (single)" => fn ->
-      Cub.store(cub_storage, formatted_entry)
+      Cub.store(:bench_cub_storage, formatted_entry)
     end,
     "ETS Ets.store (single)" => fn ->
-      Ets.store(ets_storage, formatted_entry)
+      Ets.store(:bench_ets_storage, formatted_entry)
     end,
     "CubDB Cub.store (#{messages_per_iteration}x)" => fn ->
       for _ <- 1..messages_per_iteration do
-        Cub.store(cub_storage, formatted_entry)
+        Cub.store(:bench_cub_storage, formatted_entry)
       end
     end,
     "ETS Ets.store (#{messages_per_iteration}x)" => fn ->
       for _ <- 1..messages_per_iteration do
-        Ets.store(ets_storage, formatted_entry)
+        Ets.store(:bench_ets_storage, formatted_entry)
       end
     end,
     "CubDB Full pipeline (#{messages_per_iteration}x store + flush)" => {
       fn ->
         for _ <- 1..messages_per_iteration do
-          Cub.store(cub_pipeline_storage, formatted_entry)
+          Cub.store(:bench_cub_pipeline, formatted_entry)
         end
 
         Sender.flush(cub_sender)
@@ -144,7 +142,7 @@ Benchee.run(
     "ETS Full pipeline (#{messages_per_iteration}x store + flush)" => {
       fn ->
         for _ <- 1..messages_per_iteration do
-          Ets.store(ets_pipeline_storage, formatted_entry)
+          Ets.store(:bench_ets_pipeline, formatted_entry)
         end
 
         Sender.flush(ets_sender)
@@ -169,16 +167,7 @@ ets_count = CountingEndpoint.get_count(endpoint_ets)
 IO.puts("\nTotal messages received by CubDB endpoint: #{cub_count}")
 IO.puts("Total messages received by ETS endpoint: #{ets_count}")
 
-# Cleanup
-Cub.stop(cub_storage)
-Ets.stop(ets_storage)
-Cub.stop(cub_pipeline_storage)
-Ets.stop(ets_pipeline_storage)
-GenServer.stop(cub_sender)
-GenServer.stop(ets_sender)
-CountingEndpoint.stop(endpoint_cub)
-CountingEndpoint.stop(endpoint_ets)
+# Clean up temp directories and exit (process cleanup happens automatically)
 File.rm_rf!(cub_dir)
 File.rm_rf!(cub_pipeline_dir)
-
-IO.puts("Cleanup complete.")
+IO.puts("Done.")

@@ -155,12 +155,8 @@ defmodule LokiLoggerHandler do
   """
   @spec flush(handler_id()) :: :ok | {:error, term()}
   def flush(handler_id) when is_atom(handler_id) do
-    sender_name = Module.concat([LokiLoggerHandler, Sender, handler_id])
-
-    case Process.whereis(sender_name) do
-      nil -> {:error, :handler_not_found}
-      _pid -> LokiLoggerHandler.Sender.flush(sender_name)
-    end
+    sender = LokiLoggerHandler.Application.via(LokiLoggerHandler.Sender, handler_id)
+    LokiLoggerHandler.Sender.flush(sender)
   end
 
   @doc """

@@ -31,12 +31,12 @@ defmodule LokiLoggerHandler.StorageTest do
   end
 
   # Helper to start storage with the right options per strategy
-  defp start_storage(:disk, name, dir) do
-    Cub.start_link(name: name, data_dir: dir)
+  defp start_storage(:disk, handler_id, dir) do
+    Cub.start_link(handler_id: handler_id, data_dir: dir)
   end
 
-  defp start_storage(:memory, name, _dir) do
-    Ets.start_link(name: name)
+  defp start_storage(:memory, handler_id, _dir) do
+    Ets.start_link(handler_id: handler_id)
   end
 
   describe "store/2" do
@@ -194,13 +194,13 @@ defmodule LokiLoggerHandler.StorageTest do
   end
 
   # Helper with extra options
-  defp start_storage_with_opts(:disk, name, dir, extra_opts) do
-    opts = [name: name, data_dir: dir] ++ extra_opts
+  defp start_storage_with_opts(:disk, handler_id, dir, extra_opts) do
+    opts = [handler_id: handler_id, data_dir: dir] ++ extra_opts
     Cub.start_link(opts)
   end
 
-  defp start_storage_with_opts(:memory, name, _dir, extra_opts) do
-    opts = [name: name] ++ extra_opts
+  defp start_storage_with_opts(:memory, handler_id, _dir, extra_opts) do
+    opts = [handler_id: handler_id] ++ extra_opts
     Ets.start_link(opts)
   end
 end
@@ -227,14 +227,14 @@ defmodule LokiLoggerHandler.StorageSpecificTest do
 
   describe "Cub.start_link/1" do
     test "starts a storage process" do
-      {:ok, pid} = Cub.start_link(name: :test_cub_storage, data_dir: @test_dir)
+      {:ok, pid} = Cub.start_link(handler_id: :test_cub_storage, data_dir: @test_dir)
       assert Process.alive?(pid)
       Cub.stop(:test_cub_storage)
     end
 
     test "creates data directory if it doesn't exist" do
       nested_dir = Path.join(@test_dir, "nested/path")
-      {:ok, _pid} = Cub.start_link(name: :test_cub_storage_nested, data_dir: nested_dir)
+      {:ok, _pid} = Cub.start_link(handler_id: :test_cub_storage_nested, data_dir: nested_dir)
       assert File.dir?(nested_dir)
       Cub.stop(:test_cub_storage_nested)
     end
@@ -242,7 +242,7 @@ defmodule LokiLoggerHandler.StorageSpecificTest do
 
   describe "Ets.start_link/1" do
     test "starts a storage process" do
-      {:ok, pid} = Ets.start_link(name: :test_ets_storage)
+      {:ok, pid} = Ets.start_link(handler_id: :test_ets_storage)
       assert Process.alive?(pid)
       Ets.stop(:test_ets_storage)
     end

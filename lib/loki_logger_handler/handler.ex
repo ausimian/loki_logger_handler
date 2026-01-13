@@ -35,13 +35,13 @@ defmodule LokiLoggerHandler.Handler do
   # Formats the event and stores it for later sending.
   @impl :logger_handler
   def log(%{level: _level, msg: _msg, meta: _meta} = event, %{config: config}) do
-    storage_name = config.storage_name
+    handler_id = config.handler_id
     storage_module = config.storage_module
     labels = Map.get(config, :labels, @default_labels)
     structured_metadata = Map.get(config, :structured_metadata, [])
 
     entry = Formatter.format(event, labels, structured_metadata)
-    storage_module.store(storage_name, entry)
+    storage_module.store(handler_id, entry)
 
     :ok
   end
@@ -72,9 +72,8 @@ defmodule LokiLoggerHandler.Handler do
           # Update config with derived values
           updated_config =
             config
-            |> Map.put(:storage_name, storage_name(id))
+            |> Map.put(:handler_id, id)
             |> Map.put(:storage_module, storage_module)
-            |> Map.put(:sender_name, sender_name(id))
             |> Map.put(:supervisor_pid, pid)
             |> Map.put(:storage, storage_strategy)
             |> Map.put(:data_dir, data_dir)
@@ -93,7 +92,7 @@ defmodule LokiLoggerHandler.Handler do
   def removing_handler(%{config: config}) do
     case Map.get(config, :supervisor_pid) do
       nil -> :ok
-      pid -> DynamicSupervisor.terminate_child(LokiLoggerHandler.Application, pid)
+      pid -> DynamicSupervisor.terminate_child(LokiLoggerHandler.DynamicSupervisor, pid)
     end
 
     :ok
@@ -106,9 +105,8 @@ defmodule LokiLoggerHandler.Handler do
       # Preserve internal config values
       updated_config =
         new_config
-        |> Map.put(:storage_name, old_config.storage_name)
+        |> Map.put(:handler_id, old_config.handler_id)
         |> Map.put(:storage_module, old_config.storage_module)
-        |> Map.put(:sender_name, old_config.sender_name)
         |> Map.put(:supervisor_pid, old_config.supervisor_pid)
         |> Map.put(:storage, old_config.storage)
         |> Map.put(:data_dir, old_config.data_dir)
@@ -131,7 +129,7 @@ defmodule LokiLoggerHandler.Handler do
     # Remove internal keys when reporting config
     filtered =
       config
-      |> Map.drop([:storage_name, :storage_module, :sender_name, :supervisor_pid])
+      |> Map.drop([:handler_id, :storage_module, :supervisor_pid])
 
     %{handler_config | config: filtered}
   end
@@ -160,24 +158,15 @@ defmodule LokiLoggerHandler.Handler do
 
   defp start_storage_supervisor(:disk, opts) do
     DynamicSupervisor.start_child(
-      LokiLoggerHandler.Application,
+      LokiLoggerHandler.DynamicSupervisor,
       {CubSupervisor, opts}
     )
   end
 
   defp start_storage_supervisor(:memory, opts) do
     DynamicSupervisor.start_child(
-      LokiLoggerHandler.Application,
+      LokiLoggerHandler.DynamicSupervisor,
       {EtsSupervisor, opts}
     )
-  end
-
-  # Name helpers - consistent across storage strategies
-  defp storage_name(handler_id) do
-    :"Elixir.LokiLoggerHandler.Storage.#{handler_id}"
-  end
-
-  defp sender_name(handler_id) do
-    :"Elixir.LokiLoggerHandler.Sender.#{handler_id}"
   end
 end

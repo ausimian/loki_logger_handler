@@ -16,9 +16,7 @@ defmodule LokiLoggerHandler.EtsSupervisor do
 
   @doc false
   def start_link(opts) do
-    handler_id = Keyword.fetch!(opts, :handler_id)
-    name = supervisor_name(handler_id)
-    Supervisor.start_link(__MODULE__, opts, name: name)
+    Supervisor.start_link(__MODULE__, opts)
   end
 
   @impl true
@@ -26,13 +24,12 @@ defmodule LokiLoggerHandler.EtsSupervisor do
     handler_id = Keyword.fetch!(opts, :handler_id)
 
     storage_opts = [
-      name: storage_name(handler_id),
+      handler_id: handler_id,
       max_buffer_size: Keyword.fetch!(opts, :max_buffer_size)
     ]
 
     sender_opts = [
-      name: sender_name(handler_id),
-      storage: storage_name(handler_id),
+      handler_id: handler_id,
       storage_module: Ets,
       loki_url: Keyword.fetch!(opts, :loki_url),
       batch_size: Keyword.fetch!(opts, :batch_size),
@@ -47,20 +44,5 @@ defmodule LokiLoggerHandler.EtsSupervisor do
     ]
 
     Supervisor.init(children, strategy: :one_for_one, auto_shutdown: :all_significant)
-  end
-
-  @doc false
-  def supervisor_name(handler_id) do
-    :"Elixir.LokiLoggerHandler.EtsSupervisor.#{handler_id}"
-  end
-
-  @doc false
-  def storage_name(handler_id) do
-    :"Elixir.LokiLoggerHandler.Storage.#{handler_id}"
-  end
-
-  @doc false
-  def sender_name(handler_id) do
-    :"Elixir.LokiLoggerHandler.Sender.#{handler_id}"
   end
 end

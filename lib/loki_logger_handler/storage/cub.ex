@@ -17,65 +17,69 @@ defmodule LokiLoggerHandler.Storage.Cub do
           structured_metadata: map()
         }
 
-  defstruct [:name, :db, :data_dir, :max_buffer_size]
+  defstruct [:db, :data_dir, :max_buffer_size]
 
   # Client API
 
   # Starts a Storage process linked to the current process.
   #
   # Options:
-  #   * :name - Required. The name to register the process under.
+  #   * :handler_id - Required. Used to register in the Registry.
   #   * :data_dir - Required. The directory path for CubDB storage.
   #   * :max_buffer_size - Optional. Maximum entries before dropping oldest. Default: 10_000.
   @doc false
   def start_link(opts) do
-    name = Keyword.fetch!(opts, :name)
+    handler_id = Keyword.fetch!(opts, :handler_id)
+    name = LokiLoggerHandler.Application.via(__MODULE__, handler_id)
     GenServer.start_link(__MODULE__, opts, name: name, hibernate_after: 15_000)
   end
 
   # Stores a log entry with an auto-generated monotonic key.
   # This is a cast (fire-and-forget) for better performance.
   @doc false
-  @spec store(GenServer.server(), entry()) :: :ok
-  def store(server, entry) do
-    GenServer.cast(server, {:store, entry})
+  @spec store(atom(), entry()) :: :ok
+  def store(handler_id, entry) do
+    GenServer.cast(via(handler_id), {:store, entry})
   end
 
   # Fetches up to `limit` entries from the beginning of the log.
   # Returns a list of {key, entry} tuples ordered by key.
   @doc false
-  @spec fetch_batch(GenServer.server(), pos_integer()) :: [{key(), entry()}]
-  def fetch_batch(server, limit) do
-    GenServer.call(server, {:fetch_batch, limit})
+  @spec fetch_batch(atom(), pos_integer()) :: [{key(), entry()}]
+  def fetch_batch(handler_id, limit) do
+    GenServer.call(via(handler_id), {:fetch_batch, limit})
   end
 
   # Deletes all entries with keys less than or equal to max_key.
   # Used to remove entries after successful send to Loki.
   @doc false
-  @spec delete_up_to(GenServer.server(), key()) :: :ok
-  def delete_up_to(server, max_key) do
-    GenServer.call(server, {:delete_up_to, max_key})
+  @spec delete_up_to(atom(), key()) :: :ok
+  def delete_up_to(handler_id, max_key) do
+    GenServer.call(via(handler_id), {:delete_up_to, max_key})
   end
 
   # Returns the current count of entries in storage.
   @doc false
-  @spec count(GenServer.server()) :: non_neg_integer()
-  def count(server) do
-    GenServer.call(server, :count)
+  @spec count(atom()) :: non_neg_integer()
+  def count(handler_id) do
+    GenServer.call(via(handler_id), :count)
   end
 
   # Stops the Storage process.
   @doc false
-  @spec stop(GenServer.server()) :: :ok
-  def stop(server) do
-    GenServer.stop(server)
+  @spec stop(atom()) :: :ok
+  def stop(handler_id) do
+    GenServer.stop(via(handler_id))
+  end
+
+  defp via(handler_id) do
+    LokiLoggerHandler.Application.via(__MODULE__, handler_id)
   end
 
   # Server Callbacks
 
   @impl true
   def init(opts) do
-    name = Keyword.fetch!(opts, :name)
     data_dir = Keyword.fetch!(opts, :data_dir)
     max_buffer_size = Keyword.get(opts, :max_buffer_size, 10_000)
 
@@ -85,7 +89,6 @@ defmodule LokiLoggerHandler.Storage.Cub do
     case CubDB.start_link(data_dir: data_dir) do
       {:ok, db} ->
         state = %__MODULE__{
-          name: name,
           db: db,
           data_dir: data_dir,
           max_buffer_size: max_buffer_size

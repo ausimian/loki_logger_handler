@@ -14,8 +14,7 @@ defmodule LokiLoggerHandler.Sender do
   require Logger
 
   defstruct [
-    :name,
-    :storage,
+    :handler_id,
     :storage_module,
     :loki_url,
     :batch_size,
@@ -31,8 +30,7 @@ defmodule LokiLoggerHandler.Sender do
   # Starts a Sender process linked to the current process.
   #
   # Options:
-  #   * :name - Required. The name to register the process under.
-  #   * :storage - Required. The Storage process name or pid.
+  #   * :handler_id - Required. Used for Registry and to find storage.
   #   * :storage_module - Required. The Storage module (Cub or Ets).
   #   * :loki_url - Required. The Loki base URL.
   #   * :batch_size - Optional. Max entries per batch. Default: 100.
@@ -41,7 +39,8 @@ defmodule LokiLoggerHandler.Sender do
   #   * :backoff_max_ms - Optional. Max backoff time. Default: 60000.
   @doc false
   def start_link(opts) do
-    name = Keyword.fetch!(opts, :name)
+    handler_id = Keyword.fetch!(opts, :handler_id)
+    name = LokiLoggerHandler.Application.via(__MODULE__, handler_id)
     GenServer.start_link(__MODULE__, opts, name: name, hibernate_after: 15_000)
   end
 
@@ -64,9 +63,10 @@ defmodule LokiLoggerHandler.Sender do
 
   @impl true
   def init(opts) do
+    handler_id = Keyword.fetch!(opts, :handler_id)
+
     state = %__MODULE__{
-      name: Keyword.fetch!(opts, :name),
-      storage: Keyword.fetch!(opts, :storage),
+      handler_id: handler_id,
       storage_module: Keyword.fetch!(opts, :storage_module),
       loki_url: Keyword.fetch!(opts, :loki_url),
       batch_size: Keyword.get(opts, :batch_size, 100),
@@ -131,7 +131,7 @@ defmodule LokiLoggerHandler.Sender do
 
   defp should_send?(state) do
     # Always try to send if there are entries (the timer handles throttling)
-    case state.storage_module.count(state.storage) do
+    case state.storage_module.count(state.handler_id) do
       count when count > 0 -> true
       _ -> false
     end
@@ -140,8 +140,8 @@ defmodule LokiLoggerHandler.Sender do
   defp do_send_batch(state, limit) do
     batch =
       case limit do
-        :all -> state.storage_module.fetch_batch(state.storage, 10_000)
-        n -> state.storage_module.fetch_batch(state.storage, n)
+        :all -> state.storage_module.fetch_batch(state.handler_id, 10_000)
+        n -> state.storage_module.fetch_batch(state.handler_id, n)
       end
 
     case batch do
@@ -156,7 +156,7 @@ defmodule LokiLoggerHandler.Sender do
           :ok ->
             # Delete sent entries
             {max_key, _} = List.last(entries)
-            state.storage_module.delete_up_to(state.storage, max_key)
+            state.storage_module.delete_up_to(state.handler_id, max_key)
             {:ok, %{state | consecutive_failures: 0}}
 
           {:error, reason} ->

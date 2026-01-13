@@ -1,18 +1,26 @@
 defmodule LokiLoggerHandler.Application do
   @moduledoc false
 
-  use DynamicSupervisor
-
-  def start_link(init_arg) do
-    DynamicSupervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
-  end
+  use Supervisor
 
   def start(_type, _args) do
-    start_link([])
+    Supervisor.start_link(__MODULE__, [], name: __MODULE__)
   end
 
   @impl true
   def init(_init_arg) do
-    DynamicSupervisor.init(strategy: :one_for_one)
+    children = [
+      {Registry, keys: :unique, name: LokiLoggerHandler.Registry},
+      {DynamicSupervisor, name: LokiLoggerHandler.DynamicSupervisor, strategy: :one_for_one}
+    ]
+
+    Supervisor.init(children, strategy: :one_for_one)
+  end
+
+  # Returns the via tuple for Registry lookup.
+  # Used by Storage and Sender modules to register and lookup processes.
+  @doc false
+  def via(module, handler_id) do
+    {:via, Registry, {LokiLoggerHandler.Registry, {module, handler_id}}}
   end
 end

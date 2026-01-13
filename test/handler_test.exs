@@ -2,6 +2,7 @@ defmodule LokiLoggerHandler.HandlerTest do
   use ExUnit.Case, async: false
 
   alias LokiLoggerHandler.FakeLoki
+  alias LokiLoggerHandler.Storage.{Cub, Ets}
 
   @test_dir "test/tmp/handler_test"
 
@@ -21,6 +22,14 @@ defmodule LokiLoggerHandler.HandlerTest do
     :ok
   end
 
+  # Helper to check if a process is registered via Registry
+  defp process_registered?(module, handler_id) do
+    case Registry.lookup(LokiLoggerHandler.Registry, {module, handler_id}) do
+      [{_pid, _value}] -> true
+      [] -> false
+    end
+  end
+
   describe "changing_config/3 with :set" do
     test "replaces config while preserving internal values" do
       {:ok, fake} = FakeLoki.start_link(port: 4500)
@@ -35,11 +44,9 @@ defmodule LokiLoggerHandler.HandlerTest do
           labels: %{level: :level}
         )
 
-      # Verify processes are running (they have names based on handler id)
-      storage_name = :"Elixir.LokiLoggerHandler.Storage.config_set_test"
-      sender_name = :"Elixir.LokiLoggerHandler.Sender.config_set_test"
-      assert Process.whereis(storage_name) != nil
-      assert Process.whereis(sender_name) != nil
+      # Verify processes are running (registered via Registry)
+      assert process_registered?(Cub, :config_set_test)
+      assert process_registered?(LokiLoggerHandler.Sender, :config_set_test)
 
       # Use :logger.set_handler_config to trigger changing_config(:set, ...)
       :ok =
@@ -55,8 +62,8 @@ defmodule LokiLoggerHandler.HandlerTest do
       assert config_after.labels == %{app: {:static, "newapp"}}
 
       # Processes should still be running (internal names preserved)
-      assert Process.whereis(storage_name) != nil
-      assert Process.whereis(sender_name) != nil
+      assert process_registered?(Cub, :config_set_test)
+      assert process_registered?(LokiLoggerHandler.Sender, :config_set_test)
 
       FakeLoki.stop(fake)
     end
@@ -216,19 +223,16 @@ defmodule LokiLoggerHandler.HandlerTest do
         )
 
       # Verify processes are running
-      storage_name = :"Elixir.LokiLoggerHandler.Storage.remove_test"
-      sender_name = :"Elixir.LokiLoggerHandler.Sender.remove_test"
-
-      assert Process.whereis(storage_name) != nil
-      assert Process.whereis(sender_name) != nil
+      assert process_registered?(Cub, :remove_test)
+      assert process_registered?(LokiLoggerHandler.Sender, :remove_test)
 
       # Detach handler
       :ok = LokiLoggerHandler.detach(:remove_test)
 
       # Processes should be stopped
       Process.sleep(50)
-      assert Process.whereis(storage_name) == nil
-      assert Process.whereis(sender_name) == nil
+      refute process_registered?(Cub, :remove_test)
+      refute process_registered?(LokiLoggerHandler.Sender, :remove_test)
 
       FakeLoki.stop(fake)
     end
@@ -243,9 +247,9 @@ defmodule LokiLoggerHandler.HandlerTest do
           data_dir: Path.join(@test_dir, "remove_stopped")
         )
 
-      # Manually stop the sender before detaching
-      sender_name = :"Elixir.LokiLoggerHandler.Sender.remove_stopped_test"
-      GenServer.stop(sender_name)
+      # Manually stop the sender via Registry before detaching
+      sender = LokiLoggerHandler.Application.via(LokiLoggerHandler.Sender, :remove_stopped_test)
+      GenServer.stop(sender)
 
       # Detach should still work without error
       :ok = LokiLoggerHandler.detach(:remove_stopped_test)
@@ -296,10 +300,8 @@ defmodule LokiLoggerHandler.HandlerTest do
         )
 
       # Verify processes are running
-      storage_name = :"Elixir.LokiLoggerHandler.Storage.memory_storage_test"
-      sender_name = :"Elixir.LokiLoggerHandler.Sender.memory_storage_test"
-      assert Process.whereis(storage_name) != nil
-      assert Process.whereis(sender_name) != nil
+      assert process_registered?(Ets, :memory_storage_test)
+      assert process_registered?(LokiLoggerHandler.Sender, :memory_storage_test)
 
       # Verify storage is set to :memory in config
       {:ok, config} = LokiLoggerHandler.get_config(:memory_storage_test)
@@ -344,17 +346,14 @@ defmodule LokiLoggerHandler.HandlerTest do
           storage: :memory
         )
 
-      storage_name = :"Elixir.LokiLoggerHandler.Storage.memory_detach_test"
-      sender_name = :"Elixir.LokiLoggerHandler.Sender.memory_detach_test"
-
-      assert Process.whereis(storage_name) != nil
-      assert Process.whereis(sender_name) != nil
+      assert process_registered?(Ets, :memory_detach_test)
+      assert process_registered?(LokiLoggerHandler.Sender, :memory_detach_test)
 
       :ok = LokiLoggerHandler.detach(:memory_detach_test)
 
       Process.sleep(50)
-      assert Process.whereis(storage_name) == nil
-      assert Process.whereis(sender_name) == nil
+      refute process_registered?(Ets, :memory_detach_test)
+      refute process_registered?(LokiLoggerHandler.Sender, :memory_detach_test)
 
       FakeLoki.stop(fake)
     end
@@ -372,6 +371,9 @@ defmodule LokiLoggerHandler.HandlerTest do
 
       require Logger
       Logger.info("Memory flush test message")
+
+      # Wait for log to be processed
+      Process.sleep(50)
 
       # Flush immediately instead of waiting for interval
       :ok = LokiLoggerHandler.flush(:memory_flush_test)
