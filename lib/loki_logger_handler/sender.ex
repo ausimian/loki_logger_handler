@@ -41,7 +41,7 @@ defmodule LokiLoggerHandler.Sender do
   """
   def start_link(opts) do
     name = Keyword.fetch!(opts, :name)
-    GenServer.start_link(__MODULE__, opts, name: name)
+    GenServer.start_link(__MODULE__, opts, name: name, hibernate_after: 15_000)
   end
 
   @doc """
