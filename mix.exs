@@ -74,4 +74,26 @@ defmodule LokiLoggerHandler.MixProject do
       files: ~w(lib .formatter.exs mix.exs README.md CHANGELOG.md LICENSE)
     ]
   end
+
+  def aliases do
+    [
+      "expublish.major": &expublish("expublish.major", &1),
+      "expublish.minor": &expublish("expublish.minor", &1),
+      "expublish.patch": &expublish("expublish.patch", &1),
+      "expublish.stable": &expublish("expublish.stable", &1),
+      "expublish.rc": &expublish("expublish.rc", &1),
+      "expublish.beta": &expublish("expublish.beta", &1),
+      "expublish.alpha": &expublish("expublish.alpha", &1)
+    ]
+  end
+
+  defp expublish(task, args) do
+    common = ["--tag-prefix", "", "--commit-prefix", "Version", "--branch", ""]
+
+    if "--no-dry-run" in args do
+      Mix.Task.run(task, common ++ args)
+    else
+      Mix.Task.run(task, ["--dry-run" | common] ++ args)
+    end
+  end
 end
