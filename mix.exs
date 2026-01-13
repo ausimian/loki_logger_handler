@@ -2,7 +2,7 @@ defmodule LokiLoggerHandler.MixProject do
   use Mix.Project
 
   @version "0.1.0"
-  @source_url "https://github.com/nickgunn/loki_logger_handler"
+  @source_url "https://github.com/ausimian/loki_logger_handler"
 
   def project do
     [
