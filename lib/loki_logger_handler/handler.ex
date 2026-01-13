@@ -68,14 +68,14 @@ defmodule LokiLoggerHandler.Handler do
       ]
 
       case start_storage_supervisor(storage_strategy, supervisor_opts) do
-        {:ok, _pid} ->
+        {:ok, pid} ->
           # Update config with derived values
           updated_config =
             config
             |> Map.put(:storage_name, storage_name(id))
             |> Map.put(:storage_module, storage_module)
             |> Map.put(:sender_name, sender_name(id))
-            |> Map.put(:supervisor_name, supervisor_name(storage_strategy, id))
+            |> Map.put(:supervisor_pid, pid)
             |> Map.put(:storage, storage_strategy)
             |> Map.put(:data_dir, data_dir)
 
@@ -90,10 +90,12 @@ defmodule LokiLoggerHandler.Handler do
   # Called when the handler is being removed from :logger.
   # Stops the supervisor (which stops Storage and Sender).
   @impl :logger_handler
-  def removing_handler(%{id: id, config: config}) do
-    storage_strategy = Map.get(config, :storage, :disk)
-    sup_name = Map.get(config, :supervisor_name, supervisor_name(storage_strategy, id))
-    stop_storage_supervisor(sup_name)
+  def removing_handler(%{config: config}) do
+    case Map.get(config, :supervisor_pid) do
+      nil -> :ok
+      pid -> DynamicSupervisor.terminate_child(LokiLoggerHandler.Application, pid)
+    end
+
     :ok
   end
 
@@ -107,7 +109,7 @@ defmodule LokiLoggerHandler.Handler do
         |> Map.put(:storage_name, old_config.storage_name)
         |> Map.put(:storage_module, old_config.storage_module)
         |> Map.put(:sender_name, old_config.sender_name)
-        |> Map.put(:supervisor_name, old_config.supervisor_name)
+        |> Map.put(:supervisor_pid, old_config.supervisor_pid)
         |> Map.put(:storage, old_config.storage)
         |> Map.put(:data_dir, old_config.data_dir)
 
@@ -129,7 +131,7 @@ defmodule LokiLoggerHandler.Handler do
     # Remove internal keys when reporting config
     filtered =
       config
-      |> Map.drop([:storage_name, :storage_module, :sender_name, :supervisor_name])
+      |> Map.drop([:storage_name, :storage_module, :sender_name, :supervisor_pid])
 
     %{handler_config | config: filtered}
   end
@@ -170,13 +172,6 @@ defmodule LokiLoggerHandler.Handler do
     )
   end
 
-  defp stop_storage_supervisor(name) do
-    case Process.whereis(name) do
-      nil -> :ok
-      pid -> DynamicSupervisor.terminate_child(LokiLoggerHandler.Application, pid)
-    end
-  end
-
   # Name helpers - consistent across storage strategies
   defp storage_name(handler_id) do
     :"Elixir.LokiLoggerHandler.Storage.#{handler_id}"
@@ -184,13 +179,5 @@ defmodule LokiLoggerHandler.Handler do
 
   defp sender_name(handler_id) do
     :"Elixir.LokiLoggerHandler.Sender.#{handler_id}"
-  end
-
-  defp supervisor_name(:disk, handler_id) do
-    CubSupervisor.supervisor_name(handler_id)
-  end
-
-  defp supervisor_name(:memory, handler_id) do
-    EtsSupervisor.supervisor_name(handler_id)
   end
 end
