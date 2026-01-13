@@ -133,9 +133,7 @@ defmodule LokiLoggerHandler.Storage do
       |> CubDB.select(max_key: max_key, max_key_inclusive: true)
       |> Enum.map(fn {key, _value} -> key end)
 
-    Enum.each(keys_to_delete, fn key ->
-      CubDB.delete(state.db, key)
-    end)
+    CubDB.delete_multi(state.db, keys_to_delete)
 
     {:reply, :ok, state}
   end
@@ -173,9 +171,7 @@ defmodule LokiLoggerHandler.Storage do
         |> Enum.take(drop_count)
         |> Enum.map(fn {key, _value} -> key end)
 
-      Enum.each(keys_to_drop, fn key ->
-        CubDB.delete(state.db, key)
-      end)
+      CubDB.delete_multi(state.db, keys_to_drop)
     end
 
     state
