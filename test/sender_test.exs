@@ -476,7 +476,9 @@ defmodule LokiLoggerHandler.SenderTest do
 
       # Now add an entry - should still be sent on next timer
       mod.store(handler_id, sample_entry("delayed entry"))
-      # Wait for cast to be processed, then for batch timer to fire and send
+      # Wait for cast to be processed
+      Process.sleep(@store_wait_ms)
+      # Then wait for batch timer to fire and send (50ms interval, give 2 cycles)
       Process.sleep(150)
 
       assert mod.count(handler_id) == 0
