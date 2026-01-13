@@ -22,7 +22,7 @@ defmodule LokiLoggerHandler.Handler do
 
   """
 
-  alias LokiLoggerHandler.{Formatter, Storage, Sender}
+  alias LokiLoggerHandler.{Formatter, Storage, PairSupervisor}
 
   @behaviour :logger_handler
 
@@ -53,55 +53,39 @@ defmodule LokiLoggerHandler.Handler do
   @doc """
   Called when the handler is being added to :logger.
 
-  Validates configuration and starts the Storage and Sender processes.
+  Validates configuration and starts the PairSupervisor (which starts Storage and Sender).
   """
   @impl :logger_handler
   def adding_handler(%{id: id, config: config} = handler_config) do
     with :ok <- validate_config(config) do
-      # Build derived names and paths
-      storage_name = storage_name(id)
-      sender_name = sender_name(id)
+      # Build derived values
       data_dir = Map.get(config, :data_dir, default_data_dir(id))
 
-      # Start Storage process
-      storage_opts = [
-        name: storage_name,
+      pair_supervisor_opts = [
+        handler_id: id,
         data_dir: data_dir,
-        max_buffer_size: Map.get(config, :max_buffer_size, @default_max_buffer_size)
+        max_buffer_size: Map.get(config, :max_buffer_size, @default_max_buffer_size),
+        loki_url: Map.fetch!(config, :loki_url),
+        batch_size: Map.get(config, :batch_size, @default_batch_size),
+        batch_interval_ms: Map.get(config, :batch_interval_ms, @default_batch_interval_ms),
+        backoff_base_ms: Map.get(config, :backoff_base_ms, @default_backoff_base_ms),
+        backoff_max_ms: Map.get(config, :backoff_max_ms, @default_backoff_max_ms)
       ]
 
-      case start_storage(storage_opts) do
-        {:ok, _storage_pid} ->
-          # Start Sender process
-          sender_opts = [
-            name: sender_name,
-            storage: storage_name,
-            loki_url: Map.fetch!(config, :loki_url),
-            batch_size: Map.get(config, :batch_size, @default_batch_size),
-            batch_interval_ms: Map.get(config, :batch_interval_ms, @default_batch_interval_ms),
-            backoff_base_ms: Map.get(config, :backoff_base_ms, @default_backoff_base_ms),
-            backoff_max_ms: Map.get(config, :backoff_max_ms, @default_backoff_max_ms)
-          ]
+      case start_pair_supervisor(pair_supervisor_opts) do
+        {:ok, _pid} ->
+          # Update config with derived values
+          updated_config =
+            config
+            |> Map.put(:storage_name, PairSupervisor.storage_name(id))
+            |> Map.put(:sender_name, PairSupervisor.sender_name(id))
+            |> Map.put(:pair_supervisor_name, PairSupervisor.supervisor_name(id))
+            |> Map.put(:data_dir, data_dir)
 
-          case start_sender(sender_opts) do
-            {:ok, _sender_pid} ->
-              # Update config with derived values
-              updated_config =
-                config
-                |> Map.put(:storage_name, storage_name)
-                |> Map.put(:sender_name, sender_name)
-                |> Map.put(:data_dir, data_dir)
-
-              {:ok, %{handler_config | config: updated_config}}
-
-            {:error, reason} ->
-              # Clean up storage on failure
-              stop_storage(storage_name)
-              {:error, {:sender_start_failed, reason}}
-          end
+          {:ok, %{handler_config | config: updated_config}}
 
         {:error, reason} ->
-          {:error, {:storage_start_failed, reason}}
+          {:error, {:pair_supervisor_start_failed, reason}}
       end
     end
   end
@@ -109,16 +93,12 @@ defmodule LokiLoggerHandler.Handler do
   @doc """
   Called when the handler is being removed from :logger.
 
-  Stops the Storage and Sender processes.
+  Stops the PairSupervisor (which stops Storage and Sender).
   """
   @impl :logger_handler
   def removing_handler(%{id: id, config: config}) do
-    sender_name = Map.get(config, :sender_name, sender_name(id))
-    storage_name = Map.get(config, :storage_name, storage_name(id))
-
-    stop_sender(sender_name)
-    stop_storage(storage_name)
-
+    pair_supervisor_name = Map.get(config, :pair_supervisor_name, PairSupervisor.supervisor_name(id))
+    stop_pair_supervisor(pair_supervisor_name)
     :ok
   end
 
@@ -133,6 +113,7 @@ defmodule LokiLoggerHandler.Handler do
         new_config
         |> Map.put(:storage_name, old_config.storage_name)
         |> Map.put(:sender_name, old_config.sender_name)
+        |> Map.put(:pair_supervisor_name, old_config.pair_supervisor_name)
         |> Map.put(:data_dir, old_config.data_dir)
 
       {:ok, %{handler_config | config: updated_config}}
@@ -153,7 +134,7 @@ defmodule LokiLoggerHandler.Handler do
     # Remove internal keys when reporting config
     filtered =
       config
-      |> Map.drop([:storage_name, :sender_name])
+      |> Map.drop([:storage_name, :sender_name, :pair_supervisor_name])
 
     %{handler_config | config: filtered}
   end
@@ -173,44 +154,21 @@ defmodule LokiLoggerHandler.Handler do
     end
   end
 
-  defp storage_name(handler_id) do
-    :"Elixir.LokiLoggerHandler.Storage.#{handler_id}"
-  end
-
-  defp sender_name(handler_id) do
-    :"Elixir.LokiLoggerHandler.Sender.#{handler_id}"
-  end
-
   defp default_data_dir(handler_id) do
     Path.join(["priv", "loki_buffer", to_string(handler_id)])
   end
 
-  defp start_storage(opts) do
-    # Start under the DynamicSupervisor
+  defp start_pair_supervisor(opts) do
     DynamicSupervisor.start_child(
-      LokiLoggerHandler.InstanceSupervisor,
-      {Storage, opts}
+      LokiLoggerHandler.Application,
+      {PairSupervisor, opts}
     )
   end
 
-  defp stop_storage(name) do
+  defp stop_pair_supervisor(name) do
     case Process.whereis(name) do
       nil -> :ok
-      pid -> DynamicSupervisor.terminate_child(LokiLoggerHandler.InstanceSupervisor, pid)
-    end
-  end
-
-  defp start_sender(opts) do
-    DynamicSupervisor.start_child(
-      LokiLoggerHandler.InstanceSupervisor,
-      {Sender, opts}
-    )
-  end
-
-  defp stop_sender(name) do
-    case Process.whereis(name) do
-      nil -> :ok
-      pid -> DynamicSupervisor.terminate_child(LokiLoggerHandler.InstanceSupervisor, pid)
+      pid -> DynamicSupervisor.terminate_child(LokiLoggerHandler.Application, pid)
     end
   end
 end

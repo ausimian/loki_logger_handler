@@ -200,7 +200,7 @@ defmodule LokiLoggerHandler.HandlerTest do
           data_dir: "/dev/null/impossible/path"
         )
 
-      assert {:error, {:handler_not_added, {:storage_start_failed, _reason}}} = result
+      assert {:error, {:handler_not_added, {:pair_supervisor_start_failed, _reason}}} = result
     end
   end
 
