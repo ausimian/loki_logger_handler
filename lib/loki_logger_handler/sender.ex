@@ -1,11 +1,11 @@
 defmodule LokiLoggerHandler.Sender do
-  @moduledoc """
-  GenServer that batches and sends logs to Loki.
+  # GenServer that batches and sends logs to Loki.
+  #
+  # Reads log entries from Storage and sends them to Loki in batches.
+  # Uses dual threshold batching: sends when either time interval OR batch size is reached.
+  # Implements exponential backoff on failures.
 
-  Reads log entries from Storage and sends them to Loki in batches.
-  Uses dual threshold batching: sends when either time interval OR batch size is reached.
-  Implements exponential backoff on failures.
-  """
+  @moduledoc false
 
   use GenServer
 
@@ -27,36 +27,32 @@ defmodule LokiLoggerHandler.Sender do
 
   # Client API
 
-  @doc """
-  Starts a Sender process linked to the current process.
-
-  ## Options
-    * `:name` - Required. The name to register the process under.
-    * `:storage` - Required. The Storage process name or pid.
-    * `:loki_url` - Required. The Loki base URL.
-    * `:batch_size` - Optional. Max entries per batch. Default: 100.
-    * `:batch_interval_ms` - Optional. Max time between sends in ms. Default: 5000.
-    * `:backoff_base_ms` - Optional. Base backoff time on failure. Default: 1000.
-    * `:backoff_max_ms` - Optional. Max backoff time. Default: 60000.
-  """
+  # Starts a Sender process linked to the current process.
+  #
+  # Options:
+  #   * :name - Required. The name to register the process under.
+  #   * :storage - Required. The Storage process name or pid.
+  #   * :loki_url - Required. The Loki base URL.
+  #   * :batch_size - Optional. Max entries per batch. Default: 100.
+  #   * :batch_interval_ms - Optional. Max time between sends in ms. Default: 5000.
+  #   * :backoff_base_ms - Optional. Base backoff time on failure. Default: 1000.
+  #   * :backoff_max_ms - Optional. Max backoff time. Default: 60000.
+  @doc false
   def start_link(opts) do
     name = Keyword.fetch!(opts, :name)
     GenServer.start_link(__MODULE__, opts, name: name, hibernate_after: 15_000)
   end
 
-  @doc """
-  Forces an immediate flush of pending logs.
-
-  Returns `:ok` on success or `{:error, reason}` if the send fails.
-  """
+  # Forces an immediate flush of pending logs.
+  # Returns :ok on success or {:error, reason} if the send fails.
+  @doc false
   @spec flush(GenServer.server()) :: :ok | {:error, term()}
   def flush(server) do
     GenServer.call(server, :flush, :infinity)
   end
 
-  @doc """
-  Returns the current state of the sender for debugging.
-  """
+  # Returns the current state of the sender for debugging.
+  @doc false
   @spec get_state(GenServer.server()) :: map()
   def get_state(server) do
     GenServer.call(server, :get_state)

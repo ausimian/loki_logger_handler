@@ -1,26 +1,22 @@
 defmodule LokiLoggerHandler.Handler do
-  @moduledoc """
-  Erlang :logger handler implementation for Loki.
+  # Erlang :logger handler implementation for Loki.
+  #
+  # This module implements the :logger handler callbacks. When a log event is received,
+  # it is formatted and stored in CubDB. A separate Sender process reads from CubDB
+  # and sends batches to Loki.
+  #
+  # Handler Config:
+  #   * :loki_url - Required. The Loki push API URL (e.g., "http://localhost:3100")
+  #   * :labels - Map of label names to extraction rules. Default: %{level: :level}
+  #   * :structured_metadata - List of metadata keys for Loki structured metadata. Default: []
+  #   * :data_dir - Directory for CubDB storage. Default: "priv/loki_buffer/<handler_id>"
+  #   * :batch_size - Max entries per batch. Default: 100
+  #   * :batch_interval_ms - Max time between batches in ms. Default: 5000
+  #   * :max_buffer_size - Max entries in buffer before dropping oldest. Default: 10_000
+  #   * :backoff_base_ms - Base backoff time on failure. Default: 1000
+  #   * :backoff_max_ms - Max backoff time. Default: 60_000
 
-  This module implements the :logger handler callbacks. When a log event is received,
-  it is formatted and stored in CubDB. A separate Sender process reads from CubDB
-  and sends batches to Loki.
-
-  ## Handler Config
-
-  The handler config map supports the following keys:
-
-    * `:loki_url` - Required. The Loki push API URL (e.g., "http://localhost:3100")
-    * `:labels` - Map of label names to extraction rules. Default: `%{level: :level}`
-    * `:structured_metadata` - List of metadata keys for Loki structured metadata. Default: `[]`
-    * `:data_dir` - Directory for CubDB storage. Default: `"priv/loki_buffer/<handler_id>"`
-    * `:batch_size` - Max entries per batch. Default: 100
-    * `:batch_interval_ms` - Max time between batches in ms. Default: 5000
-    * `:max_buffer_size` - Max entries in buffer before dropping oldest. Default: 10_000
-    * `:backoff_base_ms` - Base backoff time on failure. Default: 1000
-    * `:backoff_max_ms` - Max backoff time. Default: 60_000
-
-  """
+  @moduledoc false
 
   alias LokiLoggerHandler.{Formatter, Storage, PairSupervisor}
 
@@ -33,11 +29,8 @@ defmodule LokiLoggerHandler.Handler do
   @default_backoff_base_ms 1_000
   @default_backoff_max_ms 60_000
 
-  @doc """
-  Logger handler callback for processing log events.
-
-  Formats the event and stores it in CubDB for later sending.
-  """
+  # Logger handler callback for processing log events.
+  # Formats the event and stores it in CubDB for later sending.
   @impl :logger_handler
   def log(%{level: _level, msg: _msg, meta: _meta} = event, %{config: config}) do
     storage_name = config.storage_name
@@ -50,11 +43,8 @@ defmodule LokiLoggerHandler.Handler do
     :ok
   end
 
-  @doc """
-  Called when the handler is being added to :logger.
-
-  Validates configuration and starts the PairSupervisor (which starts Storage and Sender).
-  """
+  # Called when the handler is being added to :logger.
+  # Validates configuration and starts the PairSupervisor (which starts Storage and Sender).
   @impl :logger_handler
   def adding_handler(%{id: id, config: config} = handler_config) do
     with :ok <- validate_config(config) do
@@ -90,11 +80,8 @@ defmodule LokiLoggerHandler.Handler do
     end
   end
 
-  @doc """
-  Called when the handler is being removed from :logger.
-
-  Stops the PairSupervisor (which stops Storage and Sender).
-  """
+  # Called when the handler is being removed from :logger.
+  # Stops the PairSupervisor (which stops Storage and Sender).
   @impl :logger_handler
   def removing_handler(%{id: id, config: config}) do
     pair_supervisor_name = Map.get(config, :pair_supervisor_name, PairSupervisor.supervisor_name(id))
@@ -102,9 +89,7 @@ defmodule LokiLoggerHandler.Handler do
     :ok
   end
 
-  @doc """
-  Called when the handler configuration is being changed.
-  """
+  # Called when the handler configuration is being changed.
   @impl :logger_handler
   def changing_config(:set, %{config: old_config}, %{config: new_config} = handler_config) do
     with :ok <- validate_config(new_config) do

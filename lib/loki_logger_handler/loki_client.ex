@@ -1,10 +1,10 @@
 defmodule LokiLoggerHandler.LokiClient do
-  @moduledoc """
-  HTTP client for Loki push API.
+  # HTTP client for Loki push API.
+  #
+  # Formats log entries and sends them to Loki using the JSON push format.
+  # Supports both labels and structured metadata (Loki 2.9+).
 
-  Formats log entries and sends them to Loki using the JSON push format.
-  Supports both labels and structured metadata (Loki 2.9+).
-  """
+  @moduledoc false
 
   @push_path "/loki/api/v1/push"
 
@@ -16,17 +16,14 @@ defmodule LokiLoggerHandler.LokiClient do
           structured_metadata: map()
         }
 
-  @doc """
-  Pushes a batch of log entries to Loki.
-
-  ## Parameters
-    * `loki_url` - The base URL of the Loki instance (e.g., "http://localhost:3100")
-    * `entries` - List of log entries to push
-
-  ## Returns
-    * `:ok` on success
-    * `{:error, reason}` on failure
-  """
+  # Pushes a batch of log entries to Loki.
+  #
+  # Parameters:
+  #   * loki_url - The base URL of the Loki instance (e.g., "http://localhost:3100")
+  #   * entries - List of log entries to push
+  #
+  # Returns :ok on success or {:error, reason} on failure.
+  @doc false
   @spec push(String.t(), [entry()]) :: :ok | {:error, term()}
   def push(_loki_url, []), do: :ok
 
@@ -46,26 +43,11 @@ defmodule LokiLoggerHandler.LokiClient do
     end
   end
 
-  @doc """
-  Builds the Loki push API request body.
-
-  Groups entries by their labels (since Loki requires one stream per label set),
-  then formats according to the Loki push API JSON format.
-
-  ## Format
-  ```json
-  {
-    "streams": [
-      {
-        "stream": {"label1": "value1", "label2": "value2"},
-        "values": [
-          ["<timestamp_ns>", "<log_line>", {"metadata_key": "metadata_value"}]
-        ]
-      }
-    ]
-  }
-  ```
-  """
+  # Builds the Loki push API request body.
+  #
+  # Groups entries by their labels (since Loki requires one stream per label set),
+  # then formats according to the Loki push API JSON format.
+  @doc false
   @spec build_push_body([entry()]) :: map()
   def build_push_body(entries) do
     streams =

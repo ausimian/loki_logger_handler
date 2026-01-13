@@ -1,25 +1,23 @@
 defmodule LokiLoggerHandler.Formatter do
-  @moduledoc """
-  Transforms Logger events into Loki-compatible format.
+  # Transforms Logger events into Loki-compatible format.
+  #
+  # Extracts labels and structured metadata based on configuration,
+  # and formats the remaining data as the log message line.
 
-  Extracts labels and structured metadata based on configuration,
-  and formats the remaining data as the log message line.
-  """
+  @moduledoc false
 
   @type label_config :: %{atom() => :level | {:metadata, atom()}}
   @type log_event :: :logger.log_event()
 
-  @doc """
-  Formats a logger event into a storage entry.
-
-  ## Parameters
-    * `event` - The logger event map from :logger
-    * `label_config` - Map of label names to extraction rules
-    * `structured_metadata_keys` - List of metadata keys for structured metadata
-
-  ## Returns
-  A map with `:timestamp`, `:level`, `:message`, `:labels`, and `:structured_metadata`.
-  """
+  # Formats a logger event into a storage entry.
+  #
+  # Parameters:
+  #   * event - The logger event map from :logger
+  #   * label_config - Map of label names to extraction rules
+  #   * structured_metadata_keys - List of metadata keys for structured metadata
+  #
+  # Returns a map with :timestamp, :level, :message, :labels, and :structured_metadata.
+  @doc false
   @spec format(log_event(), label_config(), [atom()]) :: map()
   def format(event, label_config, structured_metadata_keys) do
     %{level: level, msg: msg, meta: meta} = event
@@ -38,11 +36,9 @@ defmodule LokiLoggerHandler.Formatter do
     }
   end
 
-  @doc """
-  Extracts the timestamp from metadata, converting to nanoseconds.
-
-  Falls back to current system time if not present.
-  """
+  # Extracts the timestamp from metadata, converting to nanoseconds.
+  # Falls back to current system time if not present.
+  @doc false
   @spec extract_timestamp(map()) :: integer()
   def extract_timestamp(meta) do
     case Map.get(meta, :time) do
@@ -55,16 +51,15 @@ defmodule LokiLoggerHandler.Formatter do
     end
   end
 
-  @doc """
-  Extracts labels from a log event based on the label configuration.
-
-  ## Label Config Format
-    * `:level` - extracts the log level
-    * `{:metadata, key}` - extracts a specific metadata key
-    * `{:static, value}` - uses a static value
-
-  Returns a map of label names to string values.
-  """
+  # Extracts labels from a log event based on the label configuration.
+  #
+  # Label Config Format:
+  #   * :level - extracts the log level
+  #   * {:metadata, key} - extracts a specific metadata key
+  #   * {:static, value} - uses a static value
+  #
+  # Returns a map of label names to string values.
+  @doc false
   @spec extract_labels(log_event(), label_config()) :: %{String.t() => String.t()}
   def extract_labels(event, label_config) do
     %{level: level, meta: meta} = event
@@ -88,11 +83,9 @@ defmodule LokiLoggerHandler.Formatter do
   defp format_label_value(value) when is_binary(value), do: value
   defp format_label_value(value), do: inspect(value)
 
-  @doc """
-  Extracts structured metadata from log metadata.
-
-  Only includes keys that are present in the metadata and have non-nil values.
-  """
+  # Extracts structured metadata from log metadata.
+  # Only includes keys that are present in the metadata and have non-nil values.
+  @doc false
   @spec extract_structured_metadata(map(), [atom()]) :: %{String.t() => String.t()}
   def extract_structured_metadata(meta, keys) do
     keys
@@ -107,14 +100,13 @@ defmodule LokiLoggerHandler.Formatter do
   defp format_metadata_value(value) when is_number(value), do: to_string(value)
   defp format_metadata_value(value), do: inspect(value)
 
-  @doc """
-  Formats the log message from the logger msg tuple.
-
-  Handles the various message formats:
-    * `{:string, chardata}` - direct string message
-    * `{:report, report}` - structured report
-    * `{format, args}` - format string with arguments
-  """
+  # Formats the log message from the logger msg tuple.
+  #
+  # Handles the various message formats:
+  #   * {:string, chardata} - direct string message
+  #   * {:report, report} - structured report
+  #   * {format, args} - format string with arguments
+  @doc false
   @spec format_message(:logger.msg_fun() | {:string, iodata()} | {:io.format(), [term()]}, map()) ::
           binary()
   def format_message({:string, chardata}, _meta) do

@@ -1,18 +1,19 @@
 defmodule LokiLoggerHandler.PairSupervisor do
-  @moduledoc """
-  Supervisor for a handler instance's Storage and Sender processes.
+  # Supervisor for a handler instance's Storage and Sender processes.
+  #
+  # Each handler instance gets its own PairSupervisor which supervises both
+  # the Storage (CubDB wrapper) and Sender (batch sender) processes together.
+  #
+  # Uses auto_shutdown: :all_significant so that when both children exit,
+  # the supervisor itself exits cleanly.
 
-  Each handler instance gets its own PairSupervisor which supervises both
-  the Storage (CubDB wrapper) and Sender (batch sender) processes together.
-
-  Uses `auto_shutdown: :all_significant` so that when both children exit,
-  the supervisor itself exits cleanly.
-  """
+  @moduledoc false
 
   use Supervisor
 
   alias LokiLoggerHandler.{Storage, Sender}
 
+  @doc false
   def start_link(opts) do
     handler_id = Keyword.fetch!(opts, :handler_id)
     name = supervisor_name(handler_id)
