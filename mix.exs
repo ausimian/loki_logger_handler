@@ -26,7 +26,8 @@ defmodule LokiLoggerHandler.MixProject do
       description: "An Elixir Logger handler for Grafana Loki",
       source_url: @source_url,
       docs: docs(),
-      package: package()
+      package: package(),
+      aliases: aliases()
     ]
   end
 
