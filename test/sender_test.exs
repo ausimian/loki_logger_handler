@@ -474,7 +474,8 @@ defmodule LokiLoggerHandler.SenderTest do
 
       # Now add an entry - should still be sent on next timer
       mod.store(handler_id, sample_entry("delayed entry"))
-      Process.sleep(100)
+      # Wait for cast to be processed, then for batch timer to fire and send
+      Process.sleep(150)
 
       assert mod.count(handler_id) == 0
       assert length(FakeLoki.get_entries(fake)) >= 1
