@@ -1,11 +1,11 @@
 # LokiLoggerHandler
 
-An Elixir Logger handler for [Grafana Loki](https://grafana.com/oss/loki/) with persistent buffering via [CubDB](https://github.com/lucaong/cubdb).
+An Elixir Logger handler for [Grafana Loki](https://grafana.com/oss/loki/) with configurable buffering.
 
 ## Features
 
 - **Erlang `:logger` handler** - Native integration with Elixir/Erlang logging
-- **Persistent buffering** - Logs are stored in CubDB and survive application restarts
+- **Flexible storage** - Choose disk (CubDB) for persistence or memory (ETS) for speed
 - **Batch sending** - Configurable time and size thresholds for efficient delivery
 - **Exponential backoff** - Graceful handling when Loki is unavailable
 - **Buffer overflow protection** - Drops oldest logs when buffer is full
@@ -54,9 +54,10 @@ LokiLoggerHandler.flush(:my_handler)
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `:loki_url` | string | *required* | Loki push API base URL |
+| `:storage` | atom | `:disk` | Storage strategy: `:disk` (CubDB) or `:memory` (ETS) |
 | `:labels` | map | `%{level: :level}` | Label extraction configuration |
 | `:structured_metadata` | list | `[]` | Metadata keys for Loki structured metadata |
-| `:data_dir` | string | `"priv/loki_buffer/<id>"` | CubDB storage directory |
+| `:data_dir` | string | `"priv/loki_buffer/<id>"` | CubDB storage directory (disk only) |
 | `:batch_size` | integer | `100` | Max entries per batch |
 | `:batch_interval_ms` | integer | `5000` | Max milliseconds between batches |
 | `:max_buffer_size` | integer | `10000` | Max buffered entries before dropping oldest |
@@ -160,7 +161,8 @@ defmodule MyApp.LoggingTest do
   alias LokiLoggerHandler.FakeLoki
 
   setup do
-    {:ok, fake} = FakeLoki.start_link(port: 4100)
+    # Start with an ephemeral port (OS-assigned)
+    {:ok, fake} = FakeLoki.start_link()
 
     LokiLoggerHandler.attach(:test_handler,
       loki_url: FakeLoki.url(fake),
@@ -198,11 +200,14 @@ end
 ### FakeLoki API
 
 ```elixir
-# Start the fake server
+# Start the fake server (uses OS-assigned ephemeral port)
+{:ok, fake} = FakeLoki.start_link()
+
+# Or specify a port explicitly
 {:ok, fake} = FakeLoki.start_link(port: 4100)
 
 # Get the URL for handler configuration
-url = FakeLoki.url(fake)  # "http://localhost:4100"
+url = FakeLoki.url(fake)  # "http://localhost:<port>"
 
 # Get all received push requests
 entries = FakeLoki.get_entries(fake)
@@ -221,13 +226,15 @@ FakeLoki.stop(fake)
 
 ```
 ┌──────────────┐     ┌─────────────┐     ┌────────────┐     ┌──────────┐
-│   Logger     │────▶│   Handler   │────▶│   CubDB    │────▶│  Sender  │────▶ Loki
-│  (events)    │     │ (persists)  │     │ (storage)  │     │ (batch)  │
+│   Logger     │────▶│   Handler   │────▶│  Storage   │────▶│  Sender  │────▶ Loki
+│  (events)    │     │  (format)   │     │ (buffer)   │     │ (batch)  │
 └──────────────┘     └─────────────┘     └────────────┘     └──────────┘
 ```
 
-1. **Handler** - Receives log events from Erlang's `:logger`, formats them, and stores in CubDB
-2. **Storage** - CubDB-backed persistent buffer with monotonic keys for ordering
+1. **Handler** - Receives log events from Erlang's `:logger`, formats them, and stores in the buffer
+2. **Storage** - Pluggable buffer with monotonic keys for ordering:
+   - `:disk` - CubDB-backed persistent storage (survives restarts)
+   - `:memory` - ETS-backed in-memory storage (faster, no persistence)
 3. **Sender** - GenServer that periodically reads batches and sends to Loki via HTTP
 4. **LokiClient** - Formats and sends log batches using the Loki push API (JSON format)
 
@@ -235,10 +242,12 @@ FakeLoki.stop(fake)
 
 When Loki is unavailable:
 
-1. Logs continue to be buffered in CubDB
+1. Logs continue to be buffered in storage
 2. Sender applies exponential backoff (1s → 2s → 4s → ... up to max)
 3. When buffer reaches `max_buffer_size`, oldest logs are dropped
 4. On successful send, backoff resets to normal interval
+
+**Note:** With `:disk` storage, buffered logs survive application restarts. With `:memory` storage, logs are lost on restart but throughput is higher.
 
 ## License
 

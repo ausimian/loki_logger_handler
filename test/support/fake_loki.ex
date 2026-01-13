@@ -109,7 +109,7 @@ defmodule LokiLoggerHandler.FakeLoki do
 
   @impl true
   def init(opts) do
-    port = Keyword.get(opts, :port, 4100)
+    port = Keyword.get(opts, :port, 0)
     parent = self()
 
     # Start Bandit with our Router
@@ -117,8 +117,11 @@ defmodule LokiLoggerHandler.FakeLoki do
 
     case Bandit.start_link(plug: plug, port: port, scheme: :http) do
       {:ok, server_pid} ->
+        # Get the actual port (important when using port 0 for ephemeral ports)
+        {:ok, {_ip, actual_port}} = ThousandIsland.listener_info(server_pid)
+
         state = %__MODULE__{
-          port: port,
+          port: actual_port,
           server_pid: server_pid,
           entries: []
         }
