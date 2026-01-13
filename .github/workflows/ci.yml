@@ -31,22 +31,6 @@ jobs:
             elixir: "1.19"
             otp: "28.2"
 
-          # macOS builds - Elixir 1.18
-          - os: macos-latest
-            elixir: "1.18"
-            otp: "27.2"
-          - os: macos-latest
-            elixir: "1.18"
-            otp: "28.2"
-
-          # macOS builds - Elixir 1.19
-          - os: macos-latest
-            elixir: "1.19"
-            otp: "27.2"
-          - os: macos-latest
-            elixir: "1.19"
-            otp: "28.2"
-
     steps:
       - uses: actions/checkout@v4
 
