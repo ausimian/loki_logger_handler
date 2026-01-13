@@ -18,7 +18,7 @@ defmodule LokiLoggerHandler.MixProject do
         "coveralls.detail": :test,
         "coveralls.post": :test,
         "coveralls.html": :test,
-        "coveralls.json": :test
+        "coveralls.github": :test
       ],
 
       # Docs
