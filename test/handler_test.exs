@@ -274,7 +274,8 @@ defmodule LokiLoggerHandler.HandlerTest do
       require Logger
       Logger.info("Test with default labels")
 
-      Process.sleep(200)
+      # Wait for log to be processed and batch timer to fire
+      Process.sleep(250)
 
       entries = FakeLoki.get_entries(fake)
       assert length(entries) >= 1
