@@ -10,6 +10,8 @@ defmodule LokiLoggerHandler.SenderTest do
   alias LokiLoggerHandler.Storage.{Cub, Ets}
 
   @test_dir "test/tmp/sender_test"
+  # Time to wait for store cast to be processed
+  @store_wait_ms 20
 
   setup %{strategy: strategy, mod: mod} do
     File.rm_rf!(@test_dir)
@@ -143,7 +145,7 @@ defmodule LokiLoggerHandler.SenderTest do
       end
 
       # Wait for casts to be processed
-      Process.sleep(20)
+      Process.sleep(@store_wait_ms)
 
       assert mod.count(handler_id) == 5
 
@@ -197,7 +199,7 @@ defmodule LokiLoggerHandler.SenderTest do
         )
 
       mod.store(handler_id, sample_entry("test message"))
-      Process.sleep(10)
+      Process.sleep(@store_wait_ms)
 
       result = Sender.flush(pid)
       assert {:error, {:request_failed, _}} = result
@@ -225,7 +227,7 @@ defmodule LokiLoggerHandler.SenderTest do
         )
 
       mod.store(handler_id, sample_entry("test"))
-      Process.sleep(10)
+      Process.sleep(@store_wait_ms)
 
       state_before = Sender.get_state(pid)
       assert state_before.consecutive_failures == 0
@@ -261,7 +263,7 @@ defmodule LokiLoggerHandler.SenderTest do
         )
 
       mod.store(handler_id, sample_entry("test"))
-      Process.sleep(10)
+      Process.sleep(@store_wait_ms)
 
       # Successful flush
       assert :ok = Sender.flush(pid)
@@ -439,7 +441,7 @@ defmodule LokiLoggerHandler.SenderTest do
 
       # Add entry and cause many failures
       mod.store(handler_id, sample_entry("cap test"))
-      Process.sleep(10)
+      Process.sleep(@store_wait_ms)
 
       # Let it fail multiple times
       for _ <- 1..5 do
