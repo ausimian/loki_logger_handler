@@ -1,5 +1,8 @@
 # LokiLoggerHandler
 
+[![CI](https://github.com/ausimian/loki_logger_handler/actions/workflows/ci.yml/badge.svg)](https://github.com/ausimian/loki_logger_handler/actions/workflows/ci.yml)
+[![Coverage Status](https://coveralls.io/repos/github/ausimian/loki_logger_handler/badge.svg?branch=main)](https://coveralls.io/github/ausimian/loki_logger_handler?branch=main)
+
 An Elixir Logger handler for [Grafana Loki](https://grafana.com/oss/loki/) with configurable buffering.
 
 ## Features
