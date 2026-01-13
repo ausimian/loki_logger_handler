@@ -19,7 +19,8 @@ defmodule LokiLoggerHandler.Handler do
 
   @moduledoc false
 
-  alias LokiLoggerHandler.{Formatter, Storage, CubSupervisor, EtsSupervisor}
+  alias LokiLoggerHandler.{Formatter, CubSupervisor, EtsSupervisor}
+  alias LokiLoggerHandler.Storage.{Cub, Ets}
 
   @behaviour :logger_handler
 
@@ -35,11 +36,12 @@ defmodule LokiLoggerHandler.Handler do
   @impl :logger_handler
   def log(%{level: _level, msg: _msg, meta: _meta} = event, %{config: config}) do
     storage_name = config.storage_name
+    storage_module = config.storage_module
     labels = Map.get(config, :labels, @default_labels)
     structured_metadata = Map.get(config, :structured_metadata, [])
 
     entry = Formatter.format(event, labels, structured_metadata)
-    Storage.store(storage_name, entry)
+    storage_module.store(storage_name, entry)
 
     :ok
   end
@@ -50,6 +52,7 @@ defmodule LokiLoggerHandler.Handler do
   def adding_handler(%{id: id, config: config} = handler_config) do
     with :ok <- validate_config(config) do
       storage_strategy = Map.get(config, :storage, :disk)
+      storage_module = storage_module(storage_strategy)
       data_dir = Map.get(config, :data_dir, default_data_dir(id))
 
       supervisor_opts = [
@@ -60,7 +63,8 @@ defmodule LokiLoggerHandler.Handler do
         batch_size: Map.get(config, :batch_size, @default_batch_size),
         batch_interval_ms: Map.get(config, :batch_interval_ms, @default_batch_interval_ms),
         backoff_base_ms: Map.get(config, :backoff_base_ms, @default_backoff_base_ms),
-        backoff_max_ms: Map.get(config, :backoff_max_ms, @default_backoff_max_ms)
+        backoff_max_ms: Map.get(config, :backoff_max_ms, @default_backoff_max_ms),
+        storage_module: storage_module
       ]
 
       case start_storage_supervisor(storage_strategy, supervisor_opts) do
@@ -69,6 +73,7 @@ defmodule LokiLoggerHandler.Handler do
           updated_config =
             config
             |> Map.put(:storage_name, storage_name(id))
+            |> Map.put(:storage_module, storage_module)
             |> Map.put(:sender_name, sender_name(id))
             |> Map.put(:supervisor_name, supervisor_name(storage_strategy, id))
             |> Map.put(:storage, storage_strategy)
@@ -100,6 +105,7 @@ defmodule LokiLoggerHandler.Handler do
       updated_config =
         new_config
         |> Map.put(:storage_name, old_config.storage_name)
+        |> Map.put(:storage_module, old_config.storage_module)
         |> Map.put(:sender_name, old_config.sender_name)
         |> Map.put(:supervisor_name, old_config.supervisor_name)
         |> Map.put(:storage, old_config.storage)
@@ -123,7 +129,7 @@ defmodule LokiLoggerHandler.Handler do
     # Remove internal keys when reporting config
     filtered =
       config
-      |> Map.drop([:storage_name, :sender_name, :supervisor_name])
+      |> Map.drop([:storage_name, :storage_module, :sender_name, :supervisor_name])
 
     %{handler_config | config: filtered}
   end
@@ -146,6 +152,9 @@ defmodule LokiLoggerHandler.Handler do
   defp default_data_dir(handler_id) do
     Path.join(["priv", "loki_buffer", to_string(handler_id)])
   end
+
+  defp storage_module(:disk), do: Cub
+  defp storage_module(:memory), do: Ets
 
   defp start_storage_supervisor(:disk, opts) do
     DynamicSupervisor.start_child(

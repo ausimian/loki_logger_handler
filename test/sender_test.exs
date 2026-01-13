@@ -1,7 +1,7 @@
 defmodule LokiLoggerHandler.SenderTest do
   use ExUnit.Case, async: false
 
-  alias LokiLoggerHandler.{Sender, Storage, FakeLoki}
+  alias LokiLoggerHandler.{Sender, FakeLoki}
   alias LokiLoggerHandler.Storage.Cub
 
   @test_dir "test/tmp/sender_test"
@@ -26,13 +26,14 @@ defmodule LokiLoggerHandler.SenderTest do
         Sender.start_link(
           name: :test_sender_start,
           storage: storage,
+          storage_module: Cub,
           loki_url: FakeLoki.url(fake)
         )
 
       assert Process.alive?(pid)
 
       GenServer.stop(pid)
-      Storage.stop(storage)
+      Cub.stop(storage)
       FakeLoki.stop(fake)
     end
 
@@ -44,6 +45,7 @@ defmodule LokiLoggerHandler.SenderTest do
         Sender.start_link(
           name: :test_sender_defaults,
           storage: storage,
+          storage_module: Cub,
           loki_url: FakeLoki.url(fake)
         )
 
@@ -56,7 +58,7 @@ defmodule LokiLoggerHandler.SenderTest do
       assert state.consecutive_failures == 0
 
       GenServer.stop(pid)
-      Storage.stop(storage)
+      Cub.stop(storage)
       FakeLoki.stop(fake)
     end
   end
@@ -70,6 +72,7 @@ defmodule LokiLoggerHandler.SenderTest do
         Sender.start_link(
           name: :test_sender_state,
           storage: storage,
+          storage_module: Cub,
           loki_url: FakeLoki.url(fake),
           batch_size: 50,
           batch_interval_ms: 1000
@@ -85,7 +88,7 @@ defmodule LokiLoggerHandler.SenderTest do
       assert is_reference(state.timer_ref)
 
       GenServer.stop(pid)
-      Storage.stop(storage)
+      Cub.stop(storage)
       FakeLoki.stop(fake)
     end
   end
@@ -99,29 +102,30 @@ defmodule LokiLoggerHandler.SenderTest do
         Sender.start_link(
           name: :test_sender_flush,
           storage: storage,
+          storage_module: Cub,
           loki_url: FakeLoki.url(fake),
           batch_interval_ms: 60_000
         )
 
       # Add entries to storage
       for i <- 1..5 do
-        Storage.store(storage, sample_entry("message #{i}"))
+        Cub.store(storage, sample_entry("message #{i}"))
       end
 
-      assert Storage.count(storage) == 5
+      assert Cub.count(storage) == 5
 
       # Flush should send all entries
       assert :ok = Sender.flush(pid)
 
       # Entries should be sent and deleted from storage
-      assert Storage.count(storage) == 0
+      assert Cub.count(storage) == 0
 
       # FakeLoki should have received them
       entries = FakeLoki.get_entries(fake)
       assert length(entries) >= 1
 
       GenServer.stop(pid)
-      Storage.stop(storage)
+      Cub.stop(storage)
       FakeLoki.stop(fake)
     end
 
@@ -133,14 +137,15 @@ defmodule LokiLoggerHandler.SenderTest do
         Sender.start_link(
           name: :test_sender_flush_empty,
           storage: storage,
+          storage_module: Cub,
           loki_url: FakeLoki.url(fake)
         )
 
-      assert Storage.count(storage) == 0
+      assert Cub.count(storage) == 0
       assert :ok = Sender.flush(pid)
 
       GenServer.stop(pid)
-      Storage.stop(storage)
+      Cub.stop(storage)
       FakeLoki.stop(fake)
     end
 
@@ -151,20 +156,21 @@ defmodule LokiLoggerHandler.SenderTest do
         Sender.start_link(
           name: :test_sender_flush_error,
           storage: storage,
+          storage_module: Cub,
           # No server listening on this port
           loki_url: "http://localhost:59998"
         )
 
-      Storage.store(storage, sample_entry("test message"))
+      Cub.store(storage, sample_entry("test message"))
 
       result = Sender.flush(pid)
       assert {:error, {:request_failed, _}} = result
 
       # Entry should still be in storage (not deleted on failure)
-      assert Storage.count(storage) == 1
+      assert Cub.count(storage) == 1
 
       GenServer.stop(pid)
-      Storage.stop(storage)
+      Cub.stop(storage)
     end
   end
 
@@ -176,11 +182,12 @@ defmodule LokiLoggerHandler.SenderTest do
         Sender.start_link(
           name: :test_sender_backoff,
           storage: storage,
+          storage_module: Cub,
           loki_url: "http://localhost:59997",
           batch_interval_ms: 60_000
         )
 
-      Storage.store(storage, sample_entry("test"))
+      Cub.store(storage, sample_entry("test"))
 
       state_before = Sender.get_state(pid)
       assert state_before.consecutive_failures == 0
@@ -198,7 +205,7 @@ defmodule LokiLoggerHandler.SenderTest do
       assert state_after_2.consecutive_failures == 2
 
       GenServer.stop(pid)
-      Storage.stop(storage)
+      Cub.stop(storage)
     end
 
     test "resets consecutive_failures on successful send" do
@@ -209,13 +216,14 @@ defmodule LokiLoggerHandler.SenderTest do
         Sender.start_link(
           name: :test_sender_backoff_reset,
           storage: storage,
+          storage_module: Cub,
           loki_url: FakeLoki.url(fake),
           batch_interval_ms: 60_000
         )
 
       # Manually set some failures by manipulating state through a flush to bad URL
       # Actually, let's just verify the reset works after success
-      Storage.store(storage, sample_entry("test"))
+      Cub.store(storage, sample_entry("test"))
 
       # Successful flush
       assert :ok = Sender.flush(pid)
@@ -224,7 +232,7 @@ defmodule LokiLoggerHandler.SenderTest do
       assert state.consecutive_failures == 0
 
       GenServer.stop(pid)
-      Storage.stop(storage)
+      Cub.stop(storage)
       FakeLoki.stop(fake)
     end
   end
@@ -238,24 +246,25 @@ defmodule LokiLoggerHandler.SenderTest do
         Sender.start_link(
           name: :test_sender_auto,
           storage: storage,
+          storage_module: Cub,
           loki_url: FakeLoki.url(fake),
           batch_interval_ms: 100
         )
 
       # Add entries
       for i <- 1..3 do
-        Storage.store(storage, sample_entry("auto message #{i}"))
+        Cub.store(storage, sample_entry("auto message #{i}"))
       end
 
       # Wait for automatic batch
       Process.sleep(250)
 
       # Entries should have been sent
-      assert Storage.count(storage) == 0
+      assert Cub.count(storage) == 0
       assert length(FakeLoki.get_entries(fake)) >= 1
 
       GenServer.stop(pid)
-      Storage.stop(storage)
+      Cub.stop(storage)
       FakeLoki.stop(fake)
     end
 
@@ -267,6 +276,7 @@ defmodule LokiLoggerHandler.SenderTest do
         Sender.start_link(
           name: :test_sender_no_send,
           storage: storage,
+          storage_module: Cub,
           loki_url: FakeLoki.url(fake),
           batch_interval_ms: 50
         )
@@ -278,7 +288,7 @@ defmodule LokiLoggerHandler.SenderTest do
       assert FakeLoki.get_entries(fake) == []
 
       GenServer.stop(:test_sender_no_send)
-      Storage.stop(storage)
+      Cub.stop(storage)
       FakeLoki.stop(fake)
     end
 
@@ -290,6 +300,7 @@ defmodule LokiLoggerHandler.SenderTest do
         Sender.start_link(
           name: :test_sender_batch_size,
           storage: storage,
+          storage_module: Cub,
           loki_url: FakeLoki.url(fake),
           batch_size: 3,
           batch_interval_ms: 100
@@ -297,7 +308,7 @@ defmodule LokiLoggerHandler.SenderTest do
 
       # Add more entries than batch size
       for i <- 1..10 do
-        Storage.store(storage, sample_entry("batch message #{i}"))
+        Cub.store(storage, sample_entry("batch message #{i}"))
       end
 
       # Wait for one batch interval
@@ -307,10 +318,10 @@ defmodule LokiLoggerHandler.SenderTest do
       # After enough time, all should be sent
       Process.sleep(500)
 
-      assert Storage.count(storage) == 0
+      assert Cub.count(storage) == 0
 
       GenServer.stop(pid)
-      Storage.stop(storage)
+      Cub.stop(storage)
       FakeLoki.stop(fake)
     end
   end
@@ -324,6 +335,7 @@ defmodule LokiLoggerHandler.SenderTest do
         Sender.start_link(
           name: :test_sender_interval,
           storage: storage,
+          storage_module: Cub,
           loki_url: FakeLoki.url(fake),
           batch_interval_ms: 100,
           backoff_base_ms: 1000
@@ -334,13 +346,13 @@ defmodule LokiLoggerHandler.SenderTest do
 
       # The timer should fire at normal interval (100ms)
       # We can verify by checking entries get sent quickly
-      Storage.store(storage, sample_entry("test"))
+      Cub.store(storage, sample_entry("test"))
       Process.sleep(200)
 
-      assert Storage.count(storage) == 0
+      assert Cub.count(storage) == 0
 
       GenServer.stop(pid)
-      Storage.stop(storage)
+      Cub.stop(storage)
       FakeLoki.stop(fake)
     end
 
@@ -351,6 +363,7 @@ defmodule LokiLoggerHandler.SenderTest do
         Sender.start_link(
           name: :test_sender_exp_backoff,
           storage: storage,
+          storage_module: Cub,
           loki_url: "http://localhost:59996",
           batch_interval_ms: 50,
           backoff_base_ms: 100,
@@ -358,7 +371,7 @@ defmodule LokiLoggerHandler.SenderTest do
         )
 
       # Add an entry and let it fail a few times
-      Storage.store(storage, sample_entry("backoff test"))
+      Cub.store(storage, sample_entry("backoff test"))
 
       # Wait for a couple batch cycles to accumulate failures
       Process.sleep(300)
@@ -368,7 +381,7 @@ defmodule LokiLoggerHandler.SenderTest do
       assert state.consecutive_failures > 0
 
       GenServer.stop(pid)
-      Storage.stop(storage)
+      Cub.stop(storage)
     end
 
     test "caps backoff at max_backoff_ms" do
@@ -378,6 +391,7 @@ defmodule LokiLoggerHandler.SenderTest do
         Sender.start_link(
           name: :test_sender_cap_backoff,
           storage: storage,
+          storage_module: Cub,
           loki_url: "http://localhost:59995",
           batch_interval_ms: 10,
           backoff_base_ms: 50,
@@ -385,7 +399,7 @@ defmodule LokiLoggerHandler.SenderTest do
         )
 
       # Add entry and cause many failures
-      Storage.store(storage, sample_entry("cap test"))
+      Cub.store(storage, sample_entry("cap test"))
 
       # Let it fail multiple times
       for _ <- 1..5 do
@@ -397,7 +411,7 @@ defmodule LokiLoggerHandler.SenderTest do
       # Backoff would be 50 * 2^4 = 800ms, but capped at 100ms
 
       GenServer.stop(pid)
-      Storage.stop(storage)
+      Cub.stop(storage)
     end
   end
 
@@ -410,6 +424,7 @@ defmodule LokiLoggerHandler.SenderTest do
         Sender.start_link(
           name: :test_sender_timer,
           storage: storage,
+          storage_module: Cub,
           loki_url: FakeLoki.url(fake),
           batch_interval_ms: 50
         )
@@ -418,14 +433,14 @@ defmodule LokiLoggerHandler.SenderTest do
       Process.sleep(200)
 
       # Now add an entry - should still be sent on next timer
-      Storage.store(storage, sample_entry("delayed entry"))
+      Cub.store(storage, sample_entry("delayed entry"))
       Process.sleep(100)
 
-      assert Storage.count(storage) == 0
+      assert Cub.count(storage) == 0
       assert length(FakeLoki.get_entries(fake)) >= 1
 
       GenServer.stop(pid)
-      Storage.stop(storage)
+      Cub.stop(storage)
       FakeLoki.stop(fake)
     end
   end

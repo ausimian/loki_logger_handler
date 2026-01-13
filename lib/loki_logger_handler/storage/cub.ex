@@ -33,6 +33,44 @@ defmodule LokiLoggerHandler.Storage.Cub do
     GenServer.start_link(__MODULE__, opts, name: name, hibernate_after: 15_000)
   end
 
+  # Stores a log entry with an auto-generated monotonic key.
+  # This is a cast (fire-and-forget) for better performance.
+  @doc false
+  @spec store(GenServer.server(), entry()) :: :ok
+  def store(server, entry) do
+    GenServer.cast(server, {:store, entry})
+  end
+
+  # Fetches up to `limit` entries from the beginning of the log.
+  # Returns a list of {key, entry} tuples ordered by key.
+  @doc false
+  @spec fetch_batch(GenServer.server(), pos_integer()) :: [{key(), entry()}]
+  def fetch_batch(server, limit) do
+    GenServer.call(server, {:fetch_batch, limit})
+  end
+
+  # Deletes all entries with keys less than or equal to max_key.
+  # Used to remove entries after successful send to Loki.
+  @doc false
+  @spec delete_up_to(GenServer.server(), key()) :: :ok
+  def delete_up_to(server, max_key) do
+    GenServer.call(server, {:delete_up_to, max_key})
+  end
+
+  # Returns the current count of entries in storage.
+  @doc false
+  @spec count(GenServer.server()) :: non_neg_integer()
+  def count(server) do
+    GenServer.call(server, :count)
+  end
+
+  # Stops the Storage process.
+  @doc false
+  @spec stop(GenServer.server()) :: :ok
+  def stop(server) do
+    GenServer.stop(server)
+  end
+
   # Server Callbacks
 
   @impl true
@@ -61,16 +99,17 @@ defmodule LokiLoggerHandler.Storage.Cub do
   end
 
   @impl true
-  def handle_call({:store, entry}, _from, state) do
+  def handle_cast({:store, entry}, state) do
     key = generate_key()
 
     # Enforce max buffer size by dropping oldest entries
     state = maybe_drop_oldest(state)
 
     :ok = CubDB.put(state.db, key, entry)
-    {:reply, {:ok, key}, state}
+    {:noreply, state}
   end
 
+  @impl true
   def handle_call({:fetch_batch, limit}, _from, state) do
     entries =
       state.db

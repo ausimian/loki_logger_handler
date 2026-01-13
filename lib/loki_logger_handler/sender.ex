@@ -9,13 +9,14 @@ defmodule LokiLoggerHandler.Sender do
 
   use GenServer
 
-  alias LokiLoggerHandler.{Storage, LokiClient}
+  alias LokiLoggerHandler.LokiClient
 
   require Logger
 
   defstruct [
     :name,
     :storage,
+    :storage_module,
     :loki_url,
     :batch_size,
     :batch_interval_ms,
@@ -32,6 +33,7 @@ defmodule LokiLoggerHandler.Sender do
   # Options:
   #   * :name - Required. The name to register the process under.
   #   * :storage - Required. The Storage process name or pid.
+  #   * :storage_module - Required. The Storage module (Cub or Ets).
   #   * :loki_url - Required. The Loki base URL.
   #   * :batch_size - Optional. Max entries per batch. Default: 100.
   #   * :batch_interval_ms - Optional. Max time between sends in ms. Default: 5000.
@@ -65,6 +67,7 @@ defmodule LokiLoggerHandler.Sender do
     state = %__MODULE__{
       name: Keyword.fetch!(opts, :name),
       storage: Keyword.fetch!(opts, :storage),
+      storage_module: Keyword.fetch!(opts, :storage_module),
       loki_url: Keyword.fetch!(opts, :loki_url),
       batch_size: Keyword.get(opts, :batch_size, 100),
       batch_interval_ms: Keyword.get(opts, :batch_interval_ms, 5_000),
@@ -128,7 +131,7 @@ defmodule LokiLoggerHandler.Sender do
 
   defp should_send?(state) do
     # Always try to send if there are entries (the timer handles throttling)
-    case Storage.count(state.storage) do
+    case state.storage_module.count(state.storage) do
       count when count > 0 -> true
       _ -> false
     end
@@ -137,8 +140,8 @@ defmodule LokiLoggerHandler.Sender do
   defp do_send_batch(state, limit) do
     batch =
       case limit do
-        :all -> Storage.fetch_batch(state.storage, 10_000)
-        n -> Storage.fetch_batch(state.storage, n)
+        :all -> state.storage_module.fetch_batch(state.storage, 10_000)
+        n -> state.storage_module.fetch_batch(state.storage, n)
       end
 
     case batch do
@@ -153,7 +156,7 @@ defmodule LokiLoggerHandler.Sender do
           :ok ->
             # Delete sent entries
             {max_key, _} = List.last(entries)
-            Storage.delete_up_to(state.storage, max_key)
+            state.storage_module.delete_up_to(state.storage, max_key)
             {:ok, %{state | consecutive_failures: 0}}
 
           {:error, reason} ->

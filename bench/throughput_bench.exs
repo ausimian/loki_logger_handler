@@ -10,7 +10,6 @@
 Code.compile_file("bench/support/counting_endpoint.ex")
 
 alias LokiLoggerHandler.Bench.CountingEndpoint
-alias LokiLoggerHandler.Storage
 alias LokiLoggerHandler.Storage.{Cub, Ets}
 alias LokiLoggerHandler.{Sender, Formatter}
 
@@ -74,6 +73,7 @@ File.mkdir_p!(cub_pipeline_dir)
   Sender.start_link(
     name: :bench_cub_sender,
     storage: :bench_cub_pipeline_storage,
+    storage_module: Cub,
     loki_url: endpoint_cub_url,
     batch_size: batch_size,
     batch_interval_ms: 60_000,
@@ -95,6 +95,7 @@ endpoint_ets_url = CountingEndpoint.url(endpoint_ets)
   Sender.start_link(
     name: :bench_ets_sender,
     storage: :bench_ets_pipeline_storage,
+    storage_module: Ets,
     loki_url: endpoint_ets_url,
     batch_size: batch_size,
     batch_interval_ms: 60_000,
@@ -111,26 +112,26 @@ IO.puts("")
 
 Benchee.run(
   %{
-    "CubDB Storage.store (single)" => fn ->
-      Storage.store(cub_storage, formatted_entry)
+    "CubDB Cub.store (single)" => fn ->
+      Cub.store(cub_storage, formatted_entry)
     end,
-    "ETS Storage.store (single)" => fn ->
-      Storage.store(ets_storage, formatted_entry)
+    "ETS Ets.store (single)" => fn ->
+      Ets.store(ets_storage, formatted_entry)
     end,
-    "CubDB Storage.store (#{messages_per_iteration}x)" => fn ->
+    "CubDB Cub.store (#{messages_per_iteration}x)" => fn ->
       for _ <- 1..messages_per_iteration do
-        Storage.store(cub_storage, formatted_entry)
+        Cub.store(cub_storage, formatted_entry)
       end
     end,
-    "ETS Storage.store (#{messages_per_iteration}x)" => fn ->
+    "ETS Ets.store (#{messages_per_iteration}x)" => fn ->
       for _ <- 1..messages_per_iteration do
-        Storage.store(ets_storage, formatted_entry)
+        Ets.store(ets_storage, formatted_entry)
       end
     end,
     "CubDB Full pipeline (#{messages_per_iteration}x store + flush)" => {
       fn ->
         for _ <- 1..messages_per_iteration do
-          Storage.store(cub_pipeline_storage, formatted_entry)
+          Cub.store(cub_pipeline_storage, formatted_entry)
         end
 
         Sender.flush(cub_sender)
@@ -143,7 +144,7 @@ Benchee.run(
     "ETS Full pipeline (#{messages_per_iteration}x store + flush)" => {
       fn ->
         for _ <- 1..messages_per_iteration do
-          Storage.store(ets_pipeline_storage, formatted_entry)
+          Ets.store(ets_pipeline_storage, formatted_entry)
         end
 
         Sender.flush(ets_sender)
@@ -169,10 +170,10 @@ IO.puts("\nTotal messages received by CubDB endpoint: #{cub_count}")
 IO.puts("Total messages received by ETS endpoint: #{ets_count}")
 
 # Cleanup
-Storage.stop(cub_storage)
-Storage.stop(ets_storage)
-Storage.stop(cub_pipeline_storage)
-Storage.stop(ets_pipeline_storage)
+Cub.stop(cub_storage)
+Ets.stop(ets_storage)
+Cub.stop(cub_pipeline_storage)
+Ets.stop(ets_pipeline_storage)
 GenServer.stop(cub_sender)
 GenServer.stop(ets_sender)
 CountingEndpoint.stop(endpoint_cub)

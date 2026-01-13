@@ -33,6 +33,7 @@ defmodule LokiLoggerHandler.EtsSupervisor do
     sender_opts = [
       name: sender_name(handler_id),
       storage: storage_name(handler_id),
+      storage_module: Ets,
       loki_url: Keyword.fetch!(opts, :loki_url),
       batch_size: Keyword.fetch!(opts, :batch_size),
       batch_interval_ms: Keyword.fetch!(opts, :batch_interval_ms),
