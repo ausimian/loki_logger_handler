@@ -35,7 +35,10 @@ defmodule LokiLoggerHandler.Storage.Ets do
   @doc false
   @spec store(atom(), map()) :: :ok
   def store(handler_id, entry) do
-    GenServer.cast({:via, Registry, {LokiLoggerHandler.Registry, {__MODULE__, handler_id}}}, {:store, entry})
+    GenServer.cast(
+      {:via, Registry, {LokiLoggerHandler.Registry, {__MODULE__, handler_id}}},
+      {:store, entry}
+    )
   end
 
   # Fetches up to `limit` entries from the beginning of the log.

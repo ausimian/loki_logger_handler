@@ -35,7 +35,8 @@ defmodule LokiLoggerHandler.LokiClientTest do
 
     test "returns error for HTTP error responses" do
       # Use a mock approach - start fake server that returns errors
-      {:ok, fake} = start_error_server(port: 4301, status: 500, body: ~s({"error": "internal server error"}))
+      {:ok, fake} =
+        start_error_server(port: 4301, status: 500, body: ~s({"error": "internal server error"}))
 
       result = LokiClient.push("http://localhost:4301", [sample_entry()])
 
@@ -45,7 +46,8 @@ defmodule LokiLoggerHandler.LokiClientTest do
     end
 
     test "returns error for 400 Bad Request" do
-      {:ok, fake} = start_error_server(port: 4302, status: 400, body: ~s({"error": "bad request"}))
+      {:ok, fake} =
+        start_error_server(port: 4302, status: 400, body: ~s({"error": "bad request"}))
 
       result = LokiClient.push("http://localhost:4302", [sample_entry()])
 
