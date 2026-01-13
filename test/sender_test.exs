@@ -2,6 +2,7 @@ defmodule LokiLoggerHandler.SenderTest do
   use ExUnit.Case, async: false
 
   alias LokiLoggerHandler.{Sender, Storage, FakeLoki}
+  alias LokiLoggerHandler.Storage.Cub
 
   @test_dir "test/tmp/sender_test"
 
@@ -434,7 +435,7 @@ defmodule LokiLoggerHandler.SenderTest do
   defp start_storage(name) do
     dir = Path.join(@test_dir, name)
 
-    Storage.start_link(
+    Cub.start_link(
       name: :"storage_#{name}",
       data_dir: dir
     )

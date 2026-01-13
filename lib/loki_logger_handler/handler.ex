@@ -2,14 +2,15 @@ defmodule LokiLoggerHandler.Handler do
   # Erlang :logger handler implementation for Loki.
   #
   # This module implements the :logger handler callbacks. When a log event is received,
-  # it is formatted and stored in CubDB. A separate Sender process reads from CubDB
+  # it is formatted and stored. A separate Sender process reads from storage
   # and sends batches to Loki.
   #
   # Handler Config:
   #   * :loki_url - Required. The Loki push API URL (e.g., "http://localhost:3100")
+  #   * :storage - Storage strategy: :disk (CubDB) or :memory (ETS). Default: :disk
   #   * :labels - Map of label names to extraction rules. Default: %{level: :level}
   #   * :structured_metadata - List of metadata keys for Loki structured metadata. Default: []
-  #   * :data_dir - Directory for CubDB storage. Default: "priv/loki_buffer/<handler_id>"
+  #   * :data_dir - Directory for CubDB storage (disk only). Default: "priv/loki_buffer/<handler_id>"
   #   * :batch_size - Max entries per batch. Default: 100
   #   * :batch_interval_ms - Max time between batches in ms. Default: 5000
   #   * :max_buffer_size - Max entries in buffer before dropping oldest. Default: 10_000
@@ -18,7 +19,7 @@ defmodule LokiLoggerHandler.Handler do
 
   @moduledoc false
 
-  alias LokiLoggerHandler.{Formatter, Storage, PairSupervisor}
+  alias LokiLoggerHandler.{Formatter, Storage, CubSupervisor, EtsSupervisor}
 
   @behaviour :logger_handler
 
@@ -30,7 +31,7 @@ defmodule LokiLoggerHandler.Handler do
   @default_backoff_max_ms 60_000
 
   # Logger handler callback for processing log events.
-  # Formats the event and stores it in CubDB for later sending.
+  # Formats the event and stores it for later sending.
   @impl :logger_handler
   def log(%{level: _level, msg: _msg, meta: _meta} = event, %{config: config}) do
     storage_name = config.storage_name
@@ -44,14 +45,14 @@ defmodule LokiLoggerHandler.Handler do
   end
 
   # Called when the handler is being added to :logger.
-  # Validates configuration and starts the PairSupervisor (which starts Storage and Sender).
+  # Validates configuration and starts the appropriate supervisor (CubSupervisor or EtsSupervisor).
   @impl :logger_handler
   def adding_handler(%{id: id, config: config} = handler_config) do
     with :ok <- validate_config(config) do
-      # Build derived values
+      storage_strategy = Map.get(config, :storage, :disk)
       data_dir = Map.get(config, :data_dir, default_data_dir(id))
 
-      pair_supervisor_opts = [
+      supervisor_opts = [
         handler_id: id,
         data_dir: data_dir,
         max_buffer_size: Map.get(config, :max_buffer_size, @default_max_buffer_size),
@@ -62,30 +63,32 @@ defmodule LokiLoggerHandler.Handler do
         backoff_max_ms: Map.get(config, :backoff_max_ms, @default_backoff_max_ms)
       ]
 
-      case start_pair_supervisor(pair_supervisor_opts) do
+      case start_storage_supervisor(storage_strategy, supervisor_opts) do
         {:ok, _pid} ->
           # Update config with derived values
           updated_config =
             config
-            |> Map.put(:storage_name, PairSupervisor.storage_name(id))
-            |> Map.put(:sender_name, PairSupervisor.sender_name(id))
-            |> Map.put(:pair_supervisor_name, PairSupervisor.supervisor_name(id))
+            |> Map.put(:storage_name, storage_name(id))
+            |> Map.put(:sender_name, sender_name(id))
+            |> Map.put(:supervisor_name, supervisor_name(storage_strategy, id))
+            |> Map.put(:storage, storage_strategy)
             |> Map.put(:data_dir, data_dir)
 
           {:ok, %{handler_config | config: updated_config}}
 
         {:error, reason} ->
-          {:error, {:pair_supervisor_start_failed, reason}}
+          {:error, {:supervisor_start_failed, reason}}
       end
     end
   end
 
   # Called when the handler is being removed from :logger.
-  # Stops the PairSupervisor (which stops Storage and Sender).
+  # Stops the supervisor (which stops Storage and Sender).
   @impl :logger_handler
   def removing_handler(%{id: id, config: config}) do
-    pair_supervisor_name = Map.get(config, :pair_supervisor_name, PairSupervisor.supervisor_name(id))
-    stop_pair_supervisor(pair_supervisor_name)
+    storage_strategy = Map.get(config, :storage, :disk)
+    sup_name = Map.get(config, :supervisor_name, supervisor_name(storage_strategy, id))
+    stop_storage_supervisor(sup_name)
     :ok
   end
 
@@ -98,7 +101,8 @@ defmodule LokiLoggerHandler.Handler do
         new_config
         |> Map.put(:storage_name, old_config.storage_name)
         |> Map.put(:sender_name, old_config.sender_name)
-        |> Map.put(:pair_supervisor_name, old_config.pair_supervisor_name)
+        |> Map.put(:supervisor_name, old_config.supervisor_name)
+        |> Map.put(:storage, old_config.storage)
         |> Map.put(:data_dir, old_config.data_dir)
 
       {:ok, %{handler_config | config: updated_config}}
@@ -119,7 +123,7 @@ defmodule LokiLoggerHandler.Handler do
     # Remove internal keys when reporting config
     filtered =
       config
-      |> Map.drop([:storage_name, :sender_name, :pair_supervisor_name])
+      |> Map.drop([:storage_name, :sender_name, :supervisor_name])
 
     %{handler_config | config: filtered}
   end
@@ -143,17 +147,41 @@ defmodule LokiLoggerHandler.Handler do
     Path.join(["priv", "loki_buffer", to_string(handler_id)])
   end
 
-  defp start_pair_supervisor(opts) do
+  defp start_storage_supervisor(:disk, opts) do
     DynamicSupervisor.start_child(
       LokiLoggerHandler.Application,
-      {PairSupervisor, opts}
+      {CubSupervisor, opts}
     )
   end
 
-  defp stop_pair_supervisor(name) do
+  defp start_storage_supervisor(:memory, opts) do
+    DynamicSupervisor.start_child(
+      LokiLoggerHandler.Application,
+      {EtsSupervisor, opts}
+    )
+  end
+
+  defp stop_storage_supervisor(name) do
     case Process.whereis(name) do
       nil -> :ok
       pid -> DynamicSupervisor.terminate_child(LokiLoggerHandler.Application, pid)
     end
+  end
+
+  # Name helpers - consistent across storage strategies
+  defp storage_name(handler_id) do
+    :"Elixir.LokiLoggerHandler.Storage.#{handler_id}"
+  end
+
+  defp sender_name(handler_id) do
+    :"Elixir.LokiLoggerHandler.Sender.#{handler_id}"
+  end
+
+  defp supervisor_name(:disk, handler_id) do
+    CubSupervisor.supervisor_name(handler_id)
+  end
+
+  defp supervisor_name(:memory, handler_id) do
+    EtsSupervisor.supervisor_name(handler_id)
   end
 end

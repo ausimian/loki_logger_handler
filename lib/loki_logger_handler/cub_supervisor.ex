@@ -1,8 +1,8 @@
-defmodule LokiLoggerHandler.PairSupervisor do
-  # Supervisor for a handler instance's Storage and Sender processes.
+defmodule LokiLoggerHandler.CubSupervisor do
+  # Supervisor for a handler instance's CubDB Storage and Sender processes.
   #
-  # Each handler instance gets its own PairSupervisor which supervises both
-  # the Storage (CubDB wrapper) and Sender (batch sender) processes together.
+  # Each handler instance using disk storage gets its own CubSupervisor which
+  # supervises both the Storage.Cub (CubDB wrapper) and Sender processes together.
   #
   # Uses auto_shutdown: :all_significant so that when both children exit,
   # the supervisor itself exits cleanly.
@@ -11,7 +11,8 @@ defmodule LokiLoggerHandler.PairSupervisor do
 
   use Supervisor
 
-  alias LokiLoggerHandler.{Storage, Sender}
+  alias LokiLoggerHandler.Storage.Cub
+  alias LokiLoggerHandler.Sender
 
   @doc false
   def start_link(opts) do
@@ -41,7 +42,7 @@ defmodule LokiLoggerHandler.PairSupervisor do
     ]
 
     children = [
-      Supervisor.child_spec({Storage, storage_opts}, significant: true, restart: :transient),
+      Supervisor.child_spec({Cub, storage_opts}, significant: true, restart: :transient),
       Supervisor.child_spec({Sender, sender_opts}, significant: true, restart: :transient)
     ]
 
@@ -50,7 +51,7 @@ defmodule LokiLoggerHandler.PairSupervisor do
 
   @doc false
   def supervisor_name(handler_id) do
-    :"Elixir.LokiLoggerHandler.PairSupervisor.#{handler_id}"
+    :"Elixir.LokiLoggerHandler.CubSupervisor.#{handler_id}"
   end
 
   @doc false

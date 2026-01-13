@@ -200,7 +200,7 @@ defmodule LokiLoggerHandler.HandlerTest do
           data_dir: "/dev/null/impossible/path"
         )
 
-      assert {:error, {:handler_not_added, {:pair_supervisor_start_failed, _reason}}} = result
+      assert {:error, {:handler_not_added, {:supervisor_start_failed, _reason}}} = result
     end
   end
 
@@ -278,6 +278,126 @@ defmodule LokiLoggerHandler.HandlerTest do
       # Check that default label (level) was used
       [%{"streams" => [stream | _]} | _] = entries
       assert stream["stream"]["level"] == "info"
+
+      FakeLoki.stop(fake)
+    end
+  end
+
+  describe "memory storage strategy" do
+    test "attach with storage: :memory starts ETS-based storage" do
+      {:ok, fake} = FakeLoki.start_link(port: 4508)
+      url = FakeLoki.url(fake)
+
+      :ok =
+        LokiLoggerHandler.attach(:memory_storage_test,
+          loki_url: url,
+          storage: :memory,
+          batch_interval_ms: 100
+        )
+
+      # Verify processes are running
+      storage_name = :"Elixir.LokiLoggerHandler.Storage.memory_storage_test"
+      sender_name = :"Elixir.LokiLoggerHandler.Sender.memory_storage_test"
+      assert Process.whereis(storage_name) != nil
+      assert Process.whereis(sender_name) != nil
+
+      # Verify storage is set to :memory in config
+      {:ok, config} = LokiLoggerHandler.get_config(:memory_storage_test)
+      assert config.storage == :memory
+
+      FakeLoki.stop(fake)
+    end
+
+    test "memory storage logs are sent to Loki" do
+      {:ok, fake} = FakeLoki.start_link(port: 4509)
+      url = FakeLoki.url(fake)
+
+      :ok =
+        LokiLoggerHandler.attach(:memory_log_test,
+          loki_url: url,
+          storage: :memory,
+          batch_interval_ms: 100,
+          labels: %{level: :level, app: {:static, "memory_test"}}
+        )
+
+      require Logger
+      Logger.info("Memory storage test message")
+
+      Process.sleep(200)
+
+      entries = FakeLoki.get_entries(fake)
+      assert length(entries) >= 1
+
+      [%{"streams" => [stream | _]} | _] = entries
+      assert stream["stream"]["app"] == "memory_test"
+
+      FakeLoki.stop(fake)
+    end
+
+    test "detach cleans up memory storage processes" do
+      {:ok, fake} = FakeLoki.start_link(port: 4510)
+      url = FakeLoki.url(fake)
+
+      :ok =
+        LokiLoggerHandler.attach(:memory_detach_test,
+          loki_url: url,
+          storage: :memory
+        )
+
+      storage_name = :"Elixir.LokiLoggerHandler.Storage.memory_detach_test"
+      sender_name = :"Elixir.LokiLoggerHandler.Sender.memory_detach_test"
+
+      assert Process.whereis(storage_name) != nil
+      assert Process.whereis(sender_name) != nil
+
+      :ok = LokiLoggerHandler.detach(:memory_detach_test)
+
+      Process.sleep(50)
+      assert Process.whereis(storage_name) == nil
+      assert Process.whereis(sender_name) == nil
+
+      FakeLoki.stop(fake)
+    end
+
+    test "flush works with memory storage" do
+      {:ok, fake} = FakeLoki.start_link(port: 4511)
+      url = FakeLoki.url(fake)
+
+      :ok =
+        LokiLoggerHandler.attach(:memory_flush_test,
+          loki_url: url,
+          storage: :memory,
+          batch_interval_ms: 60_000
+        )
+
+      require Logger
+      Logger.info("Memory flush test message")
+
+      # Flush immediately instead of waiting for interval
+      :ok = LokiLoggerHandler.flush(:memory_flush_test)
+
+      entries = FakeLoki.get_entries(fake)
+      assert length(entries) >= 1
+
+      FakeLoki.stop(fake)
+    end
+
+    test "config update preserves memory storage setting" do
+      {:ok, fake} = FakeLoki.start_link(port: 4512)
+      url = FakeLoki.url(fake)
+
+      :ok =
+        LokiLoggerHandler.attach(:memory_update_test,
+          loki_url: url,
+          storage: :memory,
+          batch_size: 50
+        )
+
+      :ok = LokiLoggerHandler.update_config(:memory_update_test, batch_size: 100)
+
+      {:ok, config} = LokiLoggerHandler.get_config(:memory_update_test)
+      assert config.storage == :memory
+      assert config.batch_size == 100
 
       FakeLoki.stop(fake)
     end

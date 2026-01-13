@@ -2,12 +2,12 @@ defmodule LokiLoggerHandler do
   @moduledoc """
   Elixir Logger handler for Grafana Loki.
 
-  This library implements an Erlang `:logger` handler that persists logs to CubDB
-  and sends them to Loki in batches. It supports:
+  This library implements an Erlang `:logger` handler that buffers logs and sends
+  them to Loki in batches. It supports:
 
   - Configurable label extraction for Loki stream labels
   - Structured metadata (Loki 2.9+)
-  - Persistent buffering via CubDB (survives restarts)
+  - Two storage strategies: disk (CubDB) or memory (ETS)
   - Dual threshold batching (time and size)
   - Exponential backoff on failures
   - Multiple handler instances for different Loki endpoints
@@ -37,9 +37,10 @@ defmodule LokiLoggerHandler do
   | Option | Type | Default | Description |
   |--------|------|---------|-------------|
   | `:loki_url` | string | required | Loki push API base URL |
+  | `:storage` | atom | `:disk` | Storage strategy: `:disk` (CubDB) or `:memory` (ETS) |
   | `:labels` | map | `%{level: :level}` | Label extraction config |
   | `:structured_metadata` | list | `[]` | Metadata keys for Loki structured metadata |
-  | `:data_dir` | string | `"priv/loki_buffer/<id>"` | CubDB storage directory |
+  | `:data_dir` | string | `"priv/loki_buffer/<id>"` | CubDB storage directory (disk only) |
   | `:batch_size` | integer | 100 | Max entries per batch |
   | `:batch_interval_ms` | integer | 5000 | Max time between batches |
   | `:max_buffer_size` | integer | 10000 | Max buffered entries before dropping |
@@ -78,6 +79,7 @@ defmodule LokiLoggerHandler do
   @type handler_id :: atom()
   @type option ::
           {:loki_url, String.t()}
+          | {:storage, :disk | :memory}
           | {:labels, map()}
           | {:structured_metadata, [atom()]}
           | {:data_dir, String.t()}
