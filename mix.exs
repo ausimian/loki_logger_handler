@@ -46,11 +46,12 @@ defmodule LokiLoggerHandler.MixProject do
       {:cubdb, "~> 2.0"},
       {:req, "~> 0.5"},
       {:jason, "~> 1.4"},
-      {:plug, "~> 1.16", only: :test},
-      {:bandit, "~> 1.6", only: :test},
+      {:plug, "~> 1.16", only: [:test, :dev]},
+      {:bandit, "~> 1.6", only: [:test, :dev]},
       {:excoveralls, "~> 0.18", only: :test},
       {:ex_doc, "~> 0.35", only: :dev, runtime: false},
-      {:expublish, "~> 2.5", only: :dev, runtime: false}
+      {:expublish, "~> 2.5", only: :dev, runtime: false},
+      {:benchee, "~> 1.0", only: :dev}
     ]
   end
 
