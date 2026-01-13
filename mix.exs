@@ -56,26 +56,11 @@ defmodule LokiLoggerHandler.MixProject do
 
   defp docs do
     [
-      main: "LokiLoggerHandler",
+      main: "readme",
       extras: ["README.md", "CHANGELOG.md", "LICENSE"],
       source_ref: "#{@version}",
       source_url: @source_url,
-      formatters: ["html"],
-      groups_for_modules: [
-        Core: [
-          LokiLoggerHandler,
-          LokiLoggerHandler.Handler
-        ],
-        Internal: [
-          LokiLoggerHandler.Storage,
-          LokiLoggerHandler.Sender,
-          LokiLoggerHandler.LokiClient,
-          LokiLoggerHandler.Formatter
-        ],
-        Testing: [
-          LokiLoggerHandler.FakeLoki
-        ]
-      ]
+      formatters: ["html"]
     ]
   end
 
