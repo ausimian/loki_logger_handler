@@ -89,7 +89,8 @@ defmodule LokiLoggerHandler.MixProject do
   end
 
   defp expublish(task, args) do
-    common = ["--tag-prefix", "", "--commit-prefix", "Version", "--branch", ""]
+    {branch, 0} = System.cmd("git", ["rev-parse", "--abbrev-ref", "HEAD"])
+    common = ["--tag-prefix", "", "--commit-prefix", "Version", "--branch", String.trim(branch)]
 
     if "--no-dry-run" in args do
       Mix.Task.run(task, common ++ args)
