@@ -23,7 +23,7 @@ defmodule LokiLoggerHandler.MixProject do
 
       # Docs
       name: "LokiLoggerHandler",
-      description: "An Elixir Logger handler for Grafana Loki with persistent buffering",
+      description: "An Elixir Logger handler for Grafana Loki",
       source_url: @source_url,
       docs: docs(),
       package: package()
