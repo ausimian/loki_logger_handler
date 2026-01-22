@@ -1,5 +1,7 @@
 # LokiLoggerHandler
 
+[![Hex.pm](https://img.shields.io/hexpm/v/loki_logger_handler.svg)](https://hex.pm/packages/loki_logger_handler)
+[![Docs](https://img.shields.io/badge/hex-docs-blue.svg)](https://hexdocs.pm/loki_logger_handler)
 [![CI](https://github.com/ausimian/loki_logger_handler/actions/workflows/ci.yml/badge.svg)](https://github.com/ausimian/loki_logger_handler/actions/workflows/ci.yml)
 [![Coverage Status](https://coveralls.io/repos/github/ausimian/loki_logger_handler/badge.svg?branch=main)](https://coveralls.io/github/ausimian/loki_logger_handler?branch=main)
 
