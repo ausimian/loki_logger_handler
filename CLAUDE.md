@@ -8,8 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Install dependencies
 mix deps.get
 
-# Compile
-mix compile
+# Compile (CI uses --warnings-as-errors)
+mix compile --warnings-as-errors
 
 # Run tests
 mix test
@@ -26,8 +26,12 @@ mix coveralls
 # Generate documentation
 mix docs
 
-# Release (uses expublish)
-mix expublish.minor  # or .major, .patch
+# Run benchmarks
+mix run bench/throughput_bench.exs
+
+# Release (uses expublish, dry-run by default)
+mix expublish.minor              # dry-run
+mix expublish.minor --no-dry-run # actual release
 ```
 
 ## Architecture
