@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- %% CHANGELOG_ENTRIES %% -->
 
+## 0.2.0 - 2026-01-22
+
+### Added
+
+- Telemetry events for buffer monitoring:
+  - `[:loki_logger_handler, :buffer, :insert]` - emitted after buffering a log entry
+  - `[:loki_logger_handler, :buffer, :remove]` - emitted after sending and removing entries
+
+
 ## 0.1.1 - 2026-01-13
 
 ### Added
