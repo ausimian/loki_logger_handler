@@ -168,10 +168,17 @@ defmodule LokiLoggerHandler.StorageTest do
       storage_name = :"small_buffer_#{strategy}_#{System.unique_integer([:positive])}"
       dir = Path.join(@test_dir, "small_buffer_#{strategy}")
 
-      {:ok, _pid} = start_storage_with_opts(strategy, storage_name, dir, max_buffer_size: 20)
+      # Use max_buffer_size: 10, which drops 1 entry (10%) when full
+      {:ok, _pid} = start_storage_with_opts(strategy, storage_name, dir, max_buffer_size: 10)
 
-      # Store 25 entries (should trigger drop when we hit 20)
-      for i <- 1..25 do
+      # Store 15 entries
+      # - Insert 1-10: count goes to 10
+      # - Insert 11: count=10 >= 10, drop 1 (entry 1), insert 11, count=10
+      # - Insert 12: count=10 >= 10, drop 1 (entry 2), insert 12, count=10
+      # - Insert 13: count=10 >= 10, drop 1 (entry 3), insert 13, count=10
+      # - Insert 14: count=10 >= 10, drop 1 (entry 4), insert 14, count=10
+      # - Insert 15: count=10 >= 10, drop 1 (entry 5), insert 15, count=10
+      for i <- 1..15 do
         mod.store(storage_name, %{
           timestamp: i,
           level: :info,
@@ -182,12 +189,58 @@ defmodule LokiLoggerHandler.StorageTest do
       end
 
       # Wait for casts to be processed
-      Process.sleep(20)
+      Process.sleep(50)
 
-      # Should have dropped oldest 10% (2 entries) when we hit 20
-      count = mod.count(storage_name)
-      # After first drop at 20, we continue adding, so final count varies
-      assert count < 25
+      # Should have exactly 10 entries (the max)
+      assert mod.count(storage_name) == 10
+
+      # Verify oldest entries were dropped - remaining should be messages 6-15
+      entries = mod.fetch_batch(storage_name, 20)
+      messages = Enum.map(entries, fn {_key, entry} -> entry.message end)
+      expected_messages = Enum.map(6..15, &"msg #{&1}")
+      assert messages == expected_messages
+
+      mod.stop(storage_name)
+    end
+
+    test "drops 10% of max_buffer_size when triggered", %{strategy: strategy, mod: mod} do
+      storage_name = :"drop_pct_#{strategy}_#{System.unique_integer([:positive])}"
+      dir = Path.join(@test_dir, "drop_pct_#{strategy}")
+
+      # Use max_buffer_size: 20, which drops 2 entries (10%) when full
+      {:ok, _pid} = start_storage_with_opts(strategy, storage_name, dir, max_buffer_size: 20)
+
+      # Fill to exactly max_buffer_size
+      for i <- 1..20 do
+        mod.store(storage_name, %{
+          timestamp: i,
+          level: :info,
+          message: "msg #{i}",
+          labels: %{},
+          structured_metadata: %{}
+        })
+      end
+
+      Process.sleep(50)
+      assert mod.count(storage_name) == 20
+
+      # Add one more - should trigger drop of 2 oldest (entries 1, 2)
+      mod.store(storage_name, %{
+        timestamp: 21,
+        level: :info,
+        message: "msg 21",
+        labels: %{},
+        structured_metadata: %{}
+      })
+
+      Process.sleep(50)
+
+      # Should have 19 entries (20 - 2 dropped + 1 added)
+      assert mod.count(storage_name) == 19
+
+      # Oldest remaining should be "msg 3"
+      [{_key, oldest}] = mod.fetch_batch(storage_name, 1)
+      assert oldest.message == "msg 3"
 
       mod.stop(storage_name)
     end
