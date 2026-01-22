@@ -72,6 +72,28 @@ defmodule LokiLoggerHandler do
 
       structured_metadata: [:request_id, :user_id, :trace_id, :span_id]
 
+  ## Telemetry
+
+  The library emits telemetry events for monitoring buffer state:
+
+  - `[:loki_logger_handler, :buffer, :insert]` - After a log entry is buffered
+  - `[:loki_logger_handler, :buffer, :remove]` - After entries are sent and removed
+
+  Both events include:
+  - Measurements: `%{count: integer}` - Buffer size after the operation
+  - Metadata: `%{handler_id: atom, storage: :cub | :ets}`
+
+  Example:
+
+      :telemetry.attach(
+        "loki-buffer-monitor",
+        [:loki_logger_handler, :buffer, :insert],
+        fn _event, %{count: count}, %{handler_id: id}, _config ->
+          IO.puts("Handler \#{id} buffer size: \#{count}")
+        end,
+        nil
+      )
+
   """
 
   alias LokiLoggerHandler.Handler

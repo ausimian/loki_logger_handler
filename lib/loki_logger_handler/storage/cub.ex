@@ -17,7 +17,7 @@ defmodule LokiLoggerHandler.Storage.Cub do
           structured_metadata: map()
         }
 
-  defstruct [:db, :data_dir, :max_buffer_size]
+  defstruct [:handler_id, :db, :data_dir, :max_buffer_size]
 
   # Client API
 
@@ -80,6 +80,7 @@ defmodule LokiLoggerHandler.Storage.Cub do
 
   @impl true
   def init(opts) do
+    handler_id = Keyword.fetch!(opts, :handler_id)
     data_dir = Keyword.fetch!(opts, :data_dir)
     max_buffer_size = Keyword.get(opts, :max_buffer_size, 10_000)
 
@@ -89,6 +90,7 @@ defmodule LokiLoggerHandler.Storage.Cub do
     case CubDB.start_link(data_dir: data_dir) do
       {:ok, db} ->
         state = %__MODULE__{
+          handler_id: handler_id,
           db: db,
           data_dir: data_dir,
           max_buffer_size: max_buffer_size
@@ -109,6 +111,13 @@ defmodule LokiLoggerHandler.Storage.Cub do
     state = maybe_drop_oldest(state)
 
     :ok = CubDB.put(state.db, key, entry)
+
+    :telemetry.execute(
+      [:loki_logger_handler, :buffer, :insert],
+      %{count: CubDB.size(state.db)},
+      %{handler_id: state.handler_id, storage: :cub}
+    )
+
     {:noreply, state}
   end
 
@@ -129,6 +138,12 @@ defmodule LokiLoggerHandler.Storage.Cub do
       |> Enum.map(fn {key, _value} -> key end)
 
     CubDB.delete_multi(state.db, keys_to_delete)
+
+    :telemetry.execute(
+      [:loki_logger_handler, :buffer, :remove],
+      %{count: CubDB.size(state.db)},
+      %{handler_id: state.handler_id, storage: :cub}
+    )
 
     {:reply, :ok, state}
   end

@@ -34,6 +34,10 @@ mix expublish.minor              # dry-run
 mix expublish.minor --no-dry-run # actual release
 ```
 
+## Release Workflow
+
+Accumulate changelog-worthy changes in `RELEASE.md` until the project is tagged and released. This file tracks what will go into the next version's changelog entry.
+
 ## Architecture
 
 This is an Erlang `:logger` handler for Grafana Loki with persistent buffering.

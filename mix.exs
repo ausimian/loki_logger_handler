@@ -47,6 +47,7 @@ defmodule LokiLoggerHandler.MixProject do
       {:cubdb, "~> 2.0"},
       {:req, "~> 0.5"},
       {:jason, "~> 1.4"},
+      {:telemetry, "~> 1.0"},
       {:plug, "~> 1.16", only: [:test, :dev]},
       {:bandit, "~> 1.6", only: [:test, :dev]},
       {:excoveralls, "~> 0.18", only: :test},

@@ -56,6 +56,13 @@ defmodule LokiLoggerHandler.Storage.Ets do
   @spec delete_up_to(atom(), tuple()) :: :ok
   def delete_up_to(handler_id, max_key) do
     delete_keys_up_to(handler_id, max_key)
+
+    :telemetry.execute(
+      [:loki_logger_handler, :buffer, :remove],
+      %{count: :ets.info(handler_id, :size)},
+      %{handler_id: handler_id, storage: :ets}
+    )
+
     :ok
   end
 
@@ -101,6 +108,13 @@ defmodule LokiLoggerHandler.Storage.Ets do
     maybe_drop_oldest(state)
 
     :ets.insert(state.table, {key, entry})
+
+    :telemetry.execute(
+      [:loki_logger_handler, :buffer, :insert],
+      %{count: :ets.info(state.table, :size)},
+      %{handler_id: state.handler_id, storage: :ets}
+    )
+
     {:noreply, state}
   end
 

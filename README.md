@@ -15,6 +15,7 @@ An Elixir Logger handler for [Grafana Loki](https://grafana.com/oss/loki/) with 
 - **Multiple handlers** - Support different Loki endpoints with different configurations
 - **Label extraction** - Flexible mapping from log metadata to Loki labels
 - **Structured metadata** - Support for Loki 2.9+ non-indexed metadata
+- **Telemetry** - Events for monitoring buffer size
 - **Test support** - Includes `FakeLoki` server for testing without a real Loki instance
 
 ## Installation
@@ -240,6 +241,33 @@ FakeLoki.stop(fake)
    - `:memory` - ETS-backed in-memory storage (faster, no persistence)
 3. **Sender** - GenServer that periodically reads batches and sends to Loki via HTTP
 4. **LokiClient** - Formats and sends log batches using the Loki push API (JSON format)
+
+## Telemetry
+
+The library emits telemetry events for monitoring buffer state:
+
+| Event | Measurements | Metadata | Description |
+|-------|--------------|----------|-------------|
+| `[:loki_logger_handler, :buffer, :insert]` | `%{count: integer}` | `%{handler_id: atom, storage: :cub \| :ets}` | Emitted after a log entry is buffered |
+| `[:loki_logger_handler, :buffer, :remove]` | `%{count: integer}` | `%{handler_id: atom, storage: :cub \| :ets}` | Emitted after entries are sent and removed |
+
+The `count` measurement is the buffer size after the operation.
+
+### Example: Monitoring Buffer Size
+
+```elixir
+:telemetry.attach_many(
+  "loki-buffer-monitor",
+  [
+    [:loki_logger_handler, :buffer, :insert],
+    [:loki_logger_handler, :buffer, :remove]
+  ],
+  fn event, %{count: count}, %{handler_id: id, storage: storage}, _config ->
+    :telemetry.execute([:my_app, :loki_buffer_size], %{value: count}, %{handler: id})
+  end,
+  nil
+)
+```
 
 ## Failure Handling
 
