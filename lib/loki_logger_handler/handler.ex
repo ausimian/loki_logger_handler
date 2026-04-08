@@ -16,6 +16,7 @@ defmodule LokiLoggerHandler.Handler do
   #   * :max_buffer_size - Max entries in buffer before dropping oldest. Default: 10_000
   #   * :backoff_base_ms - Base backoff time on failure. Default: 1000
   #   * :backoff_max_ms - Max backoff time. Default: 60_000
+  #   * :connect_options - Connection options passed to Req.post. Default: []
 
   @moduledoc false
 
@@ -82,6 +83,7 @@ defmodule LokiLoggerHandler.Handler do
         batch_interval_ms: Map.get(config, :batch_interval_ms, @default_batch_interval_ms),
         backoff_base_ms: Map.get(config, :backoff_base_ms, @default_backoff_base_ms),
         backoff_max_ms: Map.get(config, :backoff_max_ms, @default_backoff_max_ms),
+        connect_options: Map.get(config, :connect_options, []),
         storage_module: storage_module
       ]
 

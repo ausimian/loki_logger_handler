@@ -203,5 +203,19 @@ defmodule LokiLoggerHandlerTest do
       assert config.loki_url == url
       assert config.batch_size == 50
     end
+
+    test "connect_options configuration is preserved", %{url: url} do
+      connect_opts = [timeout: 30_000, pool_timeout: 5_000]
+
+      LokiLoggerHandler.attach(:connect_opts_test,
+        loki_url: url,
+        data_dir: Path.join(@test_dir, "connect_opts_test"),
+        connect_options: connect_opts
+      )
+
+      {:ok, config} = LokiLoggerHandler.get_config(:connect_opts_test)
+
+      assert config.connect_options == connect_opts
+    end
   end
 end

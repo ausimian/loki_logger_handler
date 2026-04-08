@@ -10,6 +10,22 @@ defmodule LokiLoggerHandler.LokiClientTest do
       assert :ok = LokiClient.push("http://localhost:9999", [])
     end
 
+    test "accepts connect_options parameter" do
+      {:ok, fake} = FakeLoki.start_link(port: 4304)
+      url = FakeLoki.url(fake)
+
+      entries = [sample_entry()]
+
+      # Should successfully push with connect_options
+      assert :ok = LokiClient.push(url, entries, connect_options: [timeout: 30_000])
+
+      # Verify it was received
+      received = FakeLoki.get_entries(fake)
+      assert length(received) == 1
+
+      FakeLoki.stop(fake)
+    end
+
     test "successfully pushes entries to Loki" do
       {:ok, fake} = FakeLoki.start_link(port: 4300)
       url = FakeLoki.url(fake)
