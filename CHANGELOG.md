@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 <!-- %% CHANGELOG_ENTRIES %% -->
 
+## 0.4.0 - 2026-05-25
+
+### Added
+
+- `:connect_options` configuration option, passed through to `Req.post` so the
+  HTTP connection used to push to Loki can be customised (connect timeout,
+  `:protocols`, `:transport_opts` for SSL/TLS, `:proxy`, etc.). See the keys
+  documented under `:connect_options` in the Req docs.
+  Thanks to [@gabrielmancini](https://github.com/gabrielmancini).
+
 ## 0.3.0 - 2026-05-25
 
 ### Added
