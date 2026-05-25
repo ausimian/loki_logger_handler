@@ -29,9 +29,9 @@ mix docs
 # Run benchmarks
 mix run bench/throughput_bench.exs
 
-# Release (uses expublish, dry-run by default)
-mix expublish.minor              # dry-run
-mix expublish.minor --no-dry-run # actual release
+# Release (uses publisho; bumps version, updates CHANGELOG, commits, tags)
+mix publisho minor --dry-run # preview without making changes
+mix publisho minor           # actual release
 ```
 
 ## Release Workflow
