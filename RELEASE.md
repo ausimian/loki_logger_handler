@@ -1,10 +1,7 @@
 ### Added
 
-- Telemetry events:
-  - `[:loki_logger_handler, :buffer, :insert]` - emitted after buffering a log entry
-  - `[:loki_logger_handler, :buffer, :remove]` - emitted after sending and removing entries
-  - `[:loki_logger_handler, :format, :error]` - emitted when an event cannot be
-    formatted and a fallback entry is buffered instead
+- `[:loki_logger_handler, :format, :error]` telemetry event - emitted when an
+  event cannot be formatted and a fallback entry is buffered instead
 
 ### Fixed
 
