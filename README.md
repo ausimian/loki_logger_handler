@@ -109,15 +109,14 @@ Logger.info("Request handled", request_id: "req-123", user_id: "user-456")
 
 ### Connection Options
 
-You can customize the HTTP connection behavior by passing options to `Req.post`. This is useful for configuring timeouts, SSL options, proxy settings, etc:
+You can customize the HTTP connection behavior by passing `connect_options` through to `Req.post`. This is useful for configuring the connect timeout, SSL options, proxy settings, the HTTP protocol, etc:
 
 ```elixir
 LokiLoggerHandler.attach(:my_handler,
   loki_url: "https://loki.example.com:3100",
   labels: %{level: :level},
   connect_options: [
-    timeout: 30_000,        # Request timeout in ms
-    pool_timeout: 5_000,    # Connection pool timeout
+    timeout: 30_000,        # Socket connect timeout in ms
     protocols: [:http2],    # Force HTTP/2
     transport_opts: [       # SSL/TLS options
       verify: :verify_peer,
@@ -127,7 +126,10 @@ LokiLoggerHandler.attach(:my_handler,
 )
 ```
 
-See the [Req documentation](https://hexdocs.pm/req/Req.html#post/2) for all available connection options.
+The supported keys are those documented under `:connect_options` in the
+[Req documentation](https://hexdocs.pm/req/Req.html#new/1). Note that top-level
+Req options such as `:pool_timeout` and `:receive_timeout` are not
+`connect_options` and cannot be set through this option.
 
 ## Multiple Handlers
 

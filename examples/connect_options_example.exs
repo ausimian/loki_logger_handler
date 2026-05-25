@@ -2,13 +2,14 @@
 
 # Example: Using connect_options to customize HTTP connection behavior
 #
-# This example demonstrates how to configure the HTTP client used by
-# LokiLoggerHandler to send logs to Loki. This is useful for:
-# - Configuring timeouts
-# - SSL/TLS settings
-# - Proxy configuration
-# - Connection pooling
-# - HTTP/2 settings
+# `connect_options` are passed straight through to `Req.post/2`, which forwards
+# them to its Finch/Mint connection pool. The supported keys are documented at
+# https://hexdocs.pm/req/Req.html#new/1 under `:connect_options` and include:
+# `:timeout`, `:protocols`, `:transport_opts`, `:proxy`, `:proxy_headers`,
+# `:hostname` and `:client_settings`.
+#
+# Note: top-level Req options such as `:pool_timeout` and `:receive_timeout`
+# are NOT `connect_options` and cannot be set through this option.
 
 Mix.install([
   {:loki_logger_handler, path: Path.expand("..", __DIR__)}
@@ -16,22 +17,20 @@ Mix.install([
 
 require Logger
 
-# Example 1: Basic timeout configuration
-IO.puts("\n=== Example 1: Custom Timeouts ===\n")
+# Example 1: Connection timeout
+IO.puts("\n=== Example 1: Connection Timeout ===\n")
 
 LokiLoggerHandler.attach(:timeout_example,
   loki_url: "http://localhost:3100",
   labels: %{example: {:static, "timeouts"}},
   batch_interval_ms: 2_000,
   connect_options: [
-    # Request timeout (default is typically 5_000ms)
-    timeout: 30_000,
-    # Connection pool checkout timeout
-    pool_timeout: 5_000
+    # Socket connect timeout in ms (Req default is 30_000)
+    timeout: 30_000
   ]
 )
 
-Logger.info("This log will be sent with a 30-second timeout")
+Logger.info("This log will be sent with a 30-second connect timeout")
 
 # Example 2: SSL/TLS configuration for HTTPS endpoints
 IO.puts("\n=== Example 2: SSL/TLS Configuration ===\n")
@@ -114,24 +113,6 @@ LokiLoggerHandler.attach(:self_signed_example,
 
 Logger.warning("Using verify_none - only for development!")
 Logger.info("This log accepts self-signed certificates")
-
-# Example 6: Connection pooling
-IO.puts("\n=== Example 6: Connection Pooling ===\n")
-
-LokiLoggerHandler.attach(:pool_example,
-  loki_url: "http://localhost:3100",
-  labels: %{example: {:static, "pooling"}},
-  batch_interval_ms: 2_000,
-  connect_options: [
-    timeout: 10_000,
-    pool_timeout: 5_000,
-    # Maximum number of connections in the pool
-    # (This is handled by Req's underlying HTTP client)
-    receive_timeout: 10_000
-  ]
-)
-
-Logger.info("This log uses connection pooling")
 
 # Give time for logs to be sent
 IO.puts("\n=== Waiting for logs to be sent... ===\n")
