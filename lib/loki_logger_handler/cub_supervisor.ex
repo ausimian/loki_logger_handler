@@ -36,7 +36,8 @@ defmodule LokiLoggerHandler.CubSupervisor do
       batch_size: Keyword.fetch!(opts, :batch_size),
       batch_interval_ms: Keyword.fetch!(opts, :batch_interval_ms),
       backoff_base_ms: Keyword.fetch!(opts, :backoff_base_ms),
-      backoff_max_ms: Keyword.fetch!(opts, :backoff_max_ms)
+      backoff_max_ms: Keyword.fetch!(opts, :backoff_max_ms),
+      connect_options: Keyword.get(opts, :connect_options, [])
     ]
 
     children = [

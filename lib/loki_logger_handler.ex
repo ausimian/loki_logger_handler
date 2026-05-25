@@ -46,6 +46,7 @@ defmodule LokiLoggerHandler do
   | `:max_buffer_size` | integer | 10000 | Max buffered entries before dropping |
   | `:backoff_base_ms` | integer | 1000 | Base backoff on failure |
   | `:backoff_max_ms` | integer | 60000 | Max backoff time |
+  | `:connect_options` | keyword | `[]` | Connection options passed to Req.post |
 
   ## Label Configuration
 
@@ -118,6 +119,7 @@ defmodule LokiLoggerHandler do
           | {:max_buffer_size, pos_integer()}
           | {:backoff_base_ms, pos_integer()}
           | {:backoff_max_ms, pos_integer()}
+          | {:connect_options, keyword()}
 
   @doc """
   Attaches a new Loki logger handler.

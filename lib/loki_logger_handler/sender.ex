@@ -22,6 +22,7 @@ defmodule LokiLoggerHandler.Sender do
     :backoff_base_ms,
     :backoff_max_ms,
     :timer_ref,
+    :connect_options,
     consecutive_failures: 0
   ]
 
@@ -37,6 +38,7 @@ defmodule LokiLoggerHandler.Sender do
   #   * :batch_interval_ms - Optional. Max time between sends in ms. Default: 5000.
   #   * :backoff_base_ms - Optional. Base backoff time on failure. Default: 1000.
   #   * :backoff_max_ms - Optional. Max backoff time. Default: 60000.
+  #   * :connect_options - Optional. Connection options passed to Req.post. Default: [].
   @doc false
   def start_link(opts) do
     handler_id = Keyword.fetch!(opts, :handler_id)
@@ -73,6 +75,7 @@ defmodule LokiLoggerHandler.Sender do
       batch_interval_ms: Keyword.get(opts, :batch_interval_ms, 5_000),
       backoff_base_ms: Keyword.get(opts, :backoff_base_ms, 1_000),
       backoff_max_ms: Keyword.get(opts, :backoff_max_ms, 60_000),
+      connect_options: Keyword.get(opts, :connect_options, []),
       consecutive_failures: 0
     }
 
@@ -152,7 +155,7 @@ defmodule LokiLoggerHandler.Sender do
         # Extract just the values (entries are {key, value} tuples)
         log_entries = Enum.map(entries, fn {_key, entry} -> entry end)
 
-        case LokiClient.push(state.loki_url, log_entries) do
+        case LokiClient.push(state.loki_url, log_entries, connect_options: state.connect_options) do
           :ok ->
             # Delete sent entries
             {max_key, _} = List.last(entries)

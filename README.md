@@ -69,6 +69,7 @@ LokiLoggerHandler.flush(:my_handler)
 | `:max_buffer_size` | integer | `10000` | Max buffered entries before dropping oldest |
 | `:backoff_base_ms` | integer | `1000` | Base backoff time on failure |
 | `:backoff_max_ms` | integer | `60000` | Maximum backoff time |
+| `:connect_options` | keyword | `[]` | Connection options passed to `Req.post` |
 
 ### Label Configuration
 
@@ -105,6 +106,30 @@ LokiLoggerHandler.attach(:my_handler,
 # These will be attached as structured metadata, not labels
 Logger.info("Request handled", request_id: "req-123", user_id: "user-456")
 ```
+
+### Connection Options
+
+You can customize the HTTP connection behavior by passing `connect_options` through to `Req.post`. This is useful for configuring the connect timeout, SSL options, proxy settings, the HTTP protocol, etc:
+
+```elixir
+LokiLoggerHandler.attach(:my_handler,
+  loki_url: "https://loki.example.com:3100",
+  labels: %{level: :level},
+  connect_options: [
+    timeout: 30_000,        # Socket connect timeout in ms
+    protocols: [:http2],    # Force HTTP/2
+    transport_opts: [       # SSL/TLS options
+      verify: :verify_peer,
+      cacertfile: "/path/to/ca.pem"
+    ]
+  ]
+)
+```
+
+The supported keys are those documented under `:connect_options` in the
+[Req documentation](https://hexdocs.pm/req/Req.html#new/1). Note that top-level
+Req options such as `:pool_timeout` and `:receive_timeout` are not
+`connect_options` and cannot be set through this option.
 
 ## Multiple Handlers
 

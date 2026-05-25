@@ -21,17 +21,29 @@ defmodule LokiLoggerHandler.LokiClient do
   # Parameters:
   #   * loki_url - The base URL of the Loki instance (e.g., "http://localhost:3100")
   #   * entries - List of log entries to push
+  #   * opts - Optional keyword list with:
+  #     * :connect_options - Keyword list of connection options passed to Req.post
   #
   # Returns :ok on success or {:error, reason} on failure.
   @doc false
-  @spec push(String.t(), [entry()]) :: :ok | {:error, term()}
-  def push(_loki_url, []), do: :ok
+  @spec push(String.t(), [entry()], keyword()) :: :ok | {:error, term()}
+  def push(loki_url, entries, opts \\ [])
 
-  def push(loki_url, entries) when is_list(entries) do
+  def push(_loki_url, [], _opts), do: :ok
+
+  def push(loki_url, entries, opts) when is_list(entries) do
     url = loki_url <> @push_path
     body = build_push_body(entries)
+    connect_options = Keyword.get(opts, :connect_options, [])
 
-    case Req.post(url, json: body) do
+    req_opts = [json: body]
+
+    req_opts =
+      if connect_options != [],
+        do: Keyword.put(req_opts, :connect_options, connect_options),
+        else: req_opts
+
+    case Req.post(url, req_opts) do
       {:ok, %{status: status}} when status in 200..299 ->
         :ok
 
