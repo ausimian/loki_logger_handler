@@ -83,6 +83,14 @@ defmodule LokiLoggerHandler do
   - Measurements: `%{count: integer}` - Buffer size after the operation
   - Metadata: `%{handler_id: atom, storage: :cub | :ets}`
 
+  A further event is emitted when an event cannot be formatted:
+
+  - `[:loki_logger_handler, :format, :error]` - When formatting raises. A
+    best-effort fallback entry is buffered instead, so the handler is never
+    removed from `:logger` by a single bad event.
+    - Measurements: `%{count: 1}`
+    - Metadata: `%{handler_id: atom, reason: term, stacktrace: Exception.stacktrace()}`
+
   Example:
 
       :telemetry.attach(

@@ -33,6 +33,12 @@ defmodule LokiLoggerHandler.Handler do
 
   # Logger handler callback for processing log events.
   # Formats the event and stores it for later sending.
+  #
+  # This callback runs inline in the process that called Logger and is wrapped
+  # by Erlang's logger, which removes a handler whose log/2 raises. To guarantee
+  # the handler survives any single bad event, formatting is wrapped in a rescue
+  # that falls back to a best-effort entry and emits a telemetry event, rather
+  # than letting the exception propagate and disable the handler.
   @impl :logger_handler
   def log(%{level: _level, msg: _msg, meta: _meta} = event, %{config: config}) do
     handler_id = config.handler_id
@@ -40,7 +46,19 @@ defmodule LokiLoggerHandler.Handler do
     labels = Map.get(config, :labels, @default_labels)
     structured_metadata = Map.get(config, :structured_metadata, [])
 
-    entry = Formatter.format(event, labels, structured_metadata)
+    entry =
+      try do
+        Formatter.format(event, labels, structured_metadata)
+      rescue
+        exception ->
+          emit_format_error(handler_id, exception, __STACKTRACE__)
+          fallback_entry(event)
+      catch
+        kind, reason ->
+          emit_format_error(handler_id, {kind, reason}, __STACKTRACE__)
+          fallback_entry(event)
+      end
+
     storage_module.store(handler_id, entry)
 
     :ok
@@ -135,6 +153,27 @@ defmodule LokiLoggerHandler.Handler do
   end
 
   # Private Functions
+
+  # Best-effort entry used when Formatter.format/3 fails. Avoids any code path
+  # that could raise so that a single malformed event can never take the handler
+  # down. The raw message is inspected and only the level label is attached.
+  defp fallback_entry(%{level: level, msg: msg}) do
+    %{
+      timestamp: System.system_time(:nanosecond),
+      level: level,
+      message: "[loki_logger_handler] failed to format log event: " <> inspect(msg),
+      labels: %{"level" => to_string(level)},
+      structured_metadata: %{}
+    }
+  end
+
+  defp emit_format_error(handler_id, reason, stacktrace) do
+    :telemetry.execute(
+      [:loki_logger_handler, :format, :error],
+      %{count: 1},
+      %{handler_id: handler_id, reason: reason, stacktrace: stacktrace}
+    )
+  end
 
   defp validate_config(config) do
     cond do

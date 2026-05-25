@@ -101,6 +101,15 @@ defmodule LokiLoggerHandler.FormatterTest do
       assert result >= before
       assert result <= after_time
     end
+
+    test "falls back to current time on a non-integer :time instead of raising" do
+      before = System.system_time(:nanosecond)
+      result = Formatter.extract_timestamp(%{time: "not-an-integer"})
+      after_time = System.system_time(:nanosecond)
+
+      assert result >= before
+      assert result <= after_time
+    end
   end
 
   describe "format_message/2" do
@@ -145,6 +154,23 @@ defmodule LokiLoggerHandler.FormatterTest do
 
       result = Formatter.format_message(msg, meta)
       assert result =~ "Custom:"
+    end
+
+    test "degrades gracefully on an unexpected message shape instead of raising" do
+      # A msg outside {:string, _} / {:report, _} / {format, args} must not
+      # raise FunctionClauseError; it should be inspected instead.
+      assert Formatter.format_message(:totally_unexpected, %{}) == ":totally_unexpected"
+      assert Formatter.format_message({:weird, :tuple, :shape}, %{}) =~ ":weird"
+    end
+
+    test "degrades gracefully on an unexpected report_cb shape instead of raising" do
+      # report_cb that matches none of the supported shapes (e.g. an arity-0
+      # fun) must not raise CaseClauseError; the report is rendered directly.
+      msg = {:report, %{foo: "bar"}}
+      meta = %{report_cb: fn -> "never called" end}
+
+      result = Formatter.format_message(msg, meta)
+      assert result =~ "foo="
     end
   end
 

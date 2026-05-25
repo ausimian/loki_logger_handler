@@ -288,6 +288,171 @@ defmodule LokiLoggerHandler.HandlerTest do
     end
   end
 
+  describe "log/2 robustness" do
+    test "a formatter crash does not raise out of log/2 and stores a fallback entry" do
+      {:ok, fake} = FakeLoki.start_link(port: 4513)
+      url = FakeLoki.url(fake)
+      handler_id = :robust_fallback_test
+
+      :ok =
+        LokiLoggerHandler.attach(handler_id,
+          loki_url: url,
+          storage: :memory,
+          batch_interval_ms: 60_000
+        )
+
+      config = %{
+        handler_id: handler_id,
+        storage_module: Ets,
+        labels: %{level: :level},
+        structured_metadata: []
+      }
+
+      # :io_lib.format/2 raises: the format string expects two args, one given.
+      crashing_event = %{level: :error, msg: {~c"~p ~p", [1]}, meta: %{}}
+
+      assert :ok = LokiLoggerHandler.Handler.log(crashing_event, %{config: config})
+
+      # store/2 is an async cast; force the Ets process to drain it before
+      # flushing so the read in flush is guaranteed to see the fallback entry.
+      storage_pid = GenServer.whereis(LokiLoggerHandler.Application.via(Ets, handler_id))
+      :sys.get_state(storage_pid)
+
+      # The fallback entry must have been buffered and is delivered on flush.
+      :ok = LokiLoggerHandler.flush(handler_id)
+
+      values = FakeLoki.get_log_values(fake)
+      assert Enum.any?(values, fn {_ts, msg, _md} -> msg =~ "failed to format log event" end)
+
+      FakeLoki.stop(fake)
+    end
+
+    test "a raising formatter is caught and emits a format error telemetry event" do
+      {:ok, fake} = FakeLoki.start_link(port: 4514)
+      url = FakeLoki.url(fake)
+      handler_id = :robust_telemetry_test
+
+      test_pid = self()
+
+      :telemetry.attach(
+        "robust-format-error",
+        [:loki_logger_handler, :format, :error],
+        fn event, measurements, metadata, _ ->
+          send(test_pid, {:format_error, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach("robust-format-error") end)
+
+      :ok =
+        LokiLoggerHandler.attach(handler_id,
+          loki_url: url,
+          storage: :memory,
+          batch_interval_ms: 60_000
+        )
+
+      config = %{
+        handler_id: handler_id,
+        storage_module: Ets,
+        labels: %{level: :level},
+        structured_metadata: []
+      }
+
+      # A report_cb that raises is invoked inside Formatter.format/3.
+      event = %{
+        level: :error,
+        msg: {:report, %{boom: true}},
+        meta: %{report_cb: fn _report -> raise "kaboom" end}
+      }
+
+      assert :ok = LokiLoggerHandler.Handler.log(event, %{config: config})
+
+      assert_receive {:format_error, [:loki_logger_handler, :format, :error], %{count: 1},
+                      %{handler_id: ^handler_id, reason: %RuntimeError{message: "kaboom"}}}
+
+      FakeLoki.stop(fake)
+    end
+
+    test "a non-error throw from formatting is caught and reported as {kind, reason}" do
+      {:ok, fake} = FakeLoki.start_link(port: 4516)
+      url = FakeLoki.url(fake)
+      handler_id = :robust_throw_test
+
+      test_pid = self()
+
+      :telemetry.attach(
+        "robust-format-throw",
+        [:loki_logger_handler, :format, :error],
+        fn event, measurements, metadata, _ ->
+          send(test_pid, {:format_error, event, measurements, metadata})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach("robust-format-throw") end)
+
+      :ok =
+        LokiLoggerHandler.attach(handler_id,
+          loki_url: url,
+          storage: :memory,
+          batch_interval_ms: 60_000
+        )
+
+      config = %{
+        handler_id: handler_id,
+        storage_module: Ets,
+        labels: %{level: :level},
+        structured_metadata: []
+      }
+
+      # A report_cb that throws (rather than raises) exercises the catch clause.
+      event = %{
+        level: :error,
+        msg: {:report, %{boom: true}},
+        meta: %{report_cb: fn _report -> throw(:kaboom) end}
+      }
+
+      assert :ok = LokiLoggerHandler.Handler.log(event, %{config: config})
+
+      assert_receive {:format_error, [:loki_logger_handler, :format, :error], %{count: 1},
+                      %{handler_id: ^handler_id, reason: {:throw, :kaboom}}}
+
+      FakeLoki.stop(fake)
+    end
+
+    test "a bad event delivered through :logger does not remove the handler" do
+      {:ok, fake} = FakeLoki.start_link(port: 4515)
+      url = FakeLoki.url(fake)
+      handler_id = :robust_logger_test
+
+      :ok =
+        LokiLoggerHandler.attach(handler_id,
+          loki_url: url,
+          storage: :memory,
+          batch_interval_ms: 100,
+          labels: %{level: :level}
+        )
+
+      # Emit an event whose formatting raises (mismatched format/args). Before
+      # the fix this propagated into :logger and removed the handler.
+      _ = :logger.log(:error, ~c"~p ~p", [1])
+
+      # The handler must still be installed.
+      assert {:ok, _} = :logger.get_handler_config(handler_id)
+
+      # ...and must still deliver subsequent, well-formed events.
+      require Logger
+      Logger.info("still alive after a bad event")
+      Process.sleep(250)
+
+      values = FakeLoki.get_log_values(fake)
+      assert Enum.any?(values, fn {_ts, msg, _md} -> msg =~ "still alive after a bad event" end)
+
+      FakeLoki.stop(fake)
+    end
+  end
+
   describe "memory storage strategy" do
     test "attach with storage: :memory starts ETS-based storage" do
       {:ok, fake} = FakeLoki.start_link(port: 4508)

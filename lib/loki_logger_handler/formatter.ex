@@ -48,6 +48,10 @@ defmodule LokiLoggerHandler.Formatter do
       microseconds when is_integer(microseconds) ->
         # Logger timestamps are in microseconds
         microseconds * 1_000
+
+      _other ->
+        # Unexpected :time shape (non-integer, non-nil) - fall back to now.
+        System.system_time(:nanosecond)
     end
   end
 
@@ -122,6 +126,12 @@ defmodule LokiLoggerHandler.Formatter do
     |> IO.chardata_to_string()
   end
 
+  # Catch-all for any message shape outside the expected forms. Degrade
+  # gracefully by inspecting the term instead of raising FunctionClauseError.
+  def format_message(other, _meta) do
+    inspect(other)
+  end
+
   defp format_report(report, meta) when is_map(report) do
     case Map.get(meta, :report_cb) do
       nil ->
@@ -135,6 +145,11 @@ defmodule LokiLoggerHandler.Formatter do
 
       {fun, extra} when is_function(fun, 2) ->
         fun.(report, extra) |> IO.chardata_to_string()
+
+      _other ->
+        # Unexpected report_cb shape - render the report directly rather than
+        # raising CaseClauseError.
+        Enum.map_join(report, " ", fn {k, v} -> "#{k}=#{inspect(v)}" end)
     end
   end
 
