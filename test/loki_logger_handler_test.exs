@@ -12,8 +12,10 @@ defmodule LokiLoggerHandlerTest do
     File.rm_rf!(@test_dir)
     File.mkdir_p!(@test_dir)
 
-    # Start fake Loki server
-    {:ok, fake} = FakeLoki.start_link(port: 4200)
+    # Start fake Loki server on an ephemeral port to avoid :eaddrinuse races
+    # between tests (the previous test's listener may not have released a fixed
+    # port before the next setup runs).
+    {:ok, fake} = FakeLoki.start_link()
     url = FakeLoki.url(fake)
 
     on_exit(fn ->
