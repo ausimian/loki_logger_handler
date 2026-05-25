@@ -13,13 +13,6 @@ defmodule LokiLoggerHandler.MixProject do
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       test_coverage: [tool: ExCoveralls],
-      preferred_cli_env: [
-        coveralls: :test,
-        "coveralls.detail": :test,
-        "coveralls.post": :test,
-        "coveralls.html": :test,
-        "coveralls.github": :test
-      ],
 
       # Docs
       name: "LokiLoggerHandler",
@@ -28,6 +21,19 @@ defmodule LokiLoggerHandler.MixProject do
       docs: docs(),
       package: package(),
       aliases: aliases()
+    ]
+  end
+
+  def cli do
+    [
+      preferred_envs: [
+        coveralls: :test,
+        "coveralls.detail": :test,
+        "coveralls.post": :test,
+        "coveralls.html": :test,
+        "coveralls.github": :test,
+        precommit: :test
+      ]
     ]
   end
 
@@ -51,6 +57,7 @@ defmodule LokiLoggerHandler.MixProject do
       {:plug, "~> 1.16", only: [:test, :dev]},
       {:bandit, "~> 1.6", only: [:test, :dev]},
       {:excoveralls, "~> 0.18", only: :test},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.35", only: :dev, runtime: false},
       {:expublish, "~> 2.5", only: :dev, runtime: false},
       {:benchee, "~> 1.0", only: :dev}
@@ -79,6 +86,13 @@ defmodule LokiLoggerHandler.MixProject do
 
   def aliases do
     [
+      precommit: [
+        "compile --warnings-as-errors",
+        "deps.unlock --unused",
+        "format",
+        "credo --strict",
+        "test"
+      ],
       "expublish.major": &expublish("expublish.major", &1),
       "expublish.minor": &expublish("expublish.minor", &1),
       "expublish.patch": &expublish("expublish.patch", &1),

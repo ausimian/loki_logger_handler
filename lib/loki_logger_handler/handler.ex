@@ -19,7 +19,7 @@ defmodule LokiLoggerHandler.Handler do
 
   @moduledoc false
 
-  alias LokiLoggerHandler.{Formatter, CubSupervisor, EtsSupervisor}
+  alias LokiLoggerHandler.{CubSupervisor, EtsSupervisor, Formatter}
   alias LokiLoggerHandler.Storage.{Cub, Ets}
 
   @behaviour :logger_handler

@@ -125,9 +125,7 @@ defmodule LokiLoggerHandler.Formatter do
   defp format_report(report, meta) when is_map(report) do
     case Map.get(meta, :report_cb) do
       nil ->
-        report
-        |> Enum.map(fn {k, v} -> "#{k}=#{inspect(v)}" end)
-        |> Enum.join(" ")
+        Enum.map_join(report, " ", fn {k, v} -> "#{k}=#{inspect(v)}" end)
 
       callback when is_function(callback, 1) ->
         callback.(report) |> IO.chardata_to_string()
@@ -142,9 +140,7 @@ defmodule LokiLoggerHandler.Formatter do
 
   defp format_report(report, _meta) when is_list(report) do
     if Keyword.keyword?(report) do
-      report
-      |> Enum.map(fn {k, v} -> "#{k}=#{inspect(v)}" end)
-      |> Enum.join(" ")
+      Enum.map_join(report, " ", fn {k, v} -> "#{k}=#{inspect(v)}" end)
     else
       inspect(report)
     end

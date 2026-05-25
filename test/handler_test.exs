@@ -129,7 +129,7 @@ defmodule LokiLoggerHandler.HandlerTest do
         )
 
       # Try to update with invalid loki_url type
-      result = LokiLoggerHandler.update_config(:config_update_validate, loki_url: 12345)
+      result = LokiLoggerHandler.update_config(:config_update_validate, loki_url: 12_345)
 
       assert {:error, {:invalid_config, :loki_url, "must be a string"}} = result
 
@@ -168,7 +168,7 @@ defmodule LokiLoggerHandler.HandlerTest do
     test "rejects non-string loki_url" do
       result =
         LokiLoggerHandler.attach(:invalid_url_type,
-          loki_url: 12345,
+          loki_url: 12_345,
           data_dir: Path.join(@test_dir, "invalid_url")
         )
 
@@ -278,7 +278,7 @@ defmodule LokiLoggerHandler.HandlerTest do
       Process.sleep(250)
 
       entries = FakeLoki.get_entries(fake)
-      assert length(entries) >= 1
+      assert entries != []
 
       # Check that default label (level) was used
       [%{"streams" => [stream | _]} | _] = entries
@@ -329,7 +329,7 @@ defmodule LokiLoggerHandler.HandlerTest do
       Process.sleep(200)
 
       entries = FakeLoki.get_entries(fake)
-      assert length(entries) >= 1
+      assert entries != []
 
       [%{"streams" => [stream | _]} | _] = entries
       assert stream["stream"]["app"] == "memory_test"
@@ -380,7 +380,7 @@ defmodule LokiLoggerHandler.HandlerTest do
       :ok = LokiLoggerHandler.flush(:memory_flush_test)
 
       entries = FakeLoki.get_entries(fake)
-      assert length(entries) >= 1
+      assert entries != []
 
       FakeLoki.stop(fake)
     end

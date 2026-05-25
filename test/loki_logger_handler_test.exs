@@ -81,7 +81,7 @@ defmodule LokiLoggerHandlerTest do
 
       # Check that the log was received
       entries = FakeLoki.get_entries(fake)
-      assert length(entries) >= 1
+      assert entries != []
 
       # Check the content
       values = FakeLoki.get_log_values(fake)
@@ -104,7 +104,7 @@ defmodule LokiLoggerHandlerTest do
       Process.sleep(300)
 
       entries = FakeLoki.get_entries(fake)
-      assert length(entries) >= 1
+      assert entries != []
 
       # Check that the stream has correct labels
       [%{"streams" => streams} | _] = entries
@@ -166,7 +166,7 @@ defmodule LokiLoggerHandlerTest do
 
       # Now entries should be present
       entries = FakeLoki.get_entries(fake)
-      assert length(entries) >= 1
+      assert entries != []
     end
   end
 

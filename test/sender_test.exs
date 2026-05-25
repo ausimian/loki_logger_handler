@@ -6,7 +6,7 @@ defmodule LokiLoggerHandler.SenderTest do
       %{strategy: :memory, mod: LokiLoggerHandler.Storage.Ets}
     ]
 
-  alias LokiLoggerHandler.{Sender, FakeLoki}
+  alias LokiLoggerHandler.{FakeLoki, Sender}
   alias LokiLoggerHandler.Storage.{Cub, Ets}
 
   @test_dir "test/tmp/sender_test"
@@ -157,7 +157,7 @@ defmodule LokiLoggerHandler.SenderTest do
 
       # FakeLoki should have received them
       entries = FakeLoki.get_entries(fake)
-      assert length(entries) >= 1
+      assert entries != []
 
       GenServer.stop(pid)
       mod.stop(handler_id)
@@ -302,7 +302,7 @@ defmodule LokiLoggerHandler.SenderTest do
 
       # Entries should have been sent
       assert mod.count(handler_id) == 0
-      assert length(FakeLoki.get_entries(fake)) >= 1
+      assert FakeLoki.get_entries(fake) != []
 
       GenServer.stop(pid)
       mod.stop(handler_id)
@@ -483,7 +483,7 @@ defmodule LokiLoggerHandler.SenderTest do
       Process.sleep(250)
 
       assert mod.count(handler_id) == 0
-      assert length(FakeLoki.get_entries(fake)) >= 1
+      assert FakeLoki.get_entries(fake) != []
 
       GenServer.stop(pid)
       mod.stop(handler_id)
