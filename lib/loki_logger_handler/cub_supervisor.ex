@@ -11,8 +11,8 @@ defmodule LokiLoggerHandler.CubSupervisor do
 
   use Supervisor
 
-  alias LokiLoggerHandler.Storage.Cub
   alias LokiLoggerHandler.Sender
+  alias LokiLoggerHandler.Storage.Cub
 
   @doc false
   def start_link(opts) do

@@ -11,8 +11,8 @@ defmodule LokiLoggerHandler.EtsSupervisor do
 
   use Supervisor
 
-  alias LokiLoggerHandler.Storage.Ets
   alias LokiLoggerHandler.Sender
+  alias LokiLoggerHandler.Storage.Ets
 
   @doc false
   def start_link(opts) do

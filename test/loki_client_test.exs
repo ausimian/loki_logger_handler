@@ -1,8 +1,8 @@
 defmodule LokiLoggerHandler.LokiClientTest do
   use ExUnit.Case, async: false
 
-  alias LokiLoggerHandler.LokiClient
   alias LokiLoggerHandler.FakeLoki
+  alias LokiLoggerHandler.LokiClient
 
   describe "push/2" do
     test "returns :ok for empty list without making request" do
