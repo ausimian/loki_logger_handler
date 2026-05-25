@@ -59,7 +59,7 @@ defmodule LokiLoggerHandler.MixProject do
       {:excoveralls, "~> 0.18", only: :test},
       {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.35", only: :dev, runtime: false},
-      {:expublish, "~> 2.5", only: :dev, runtime: false},
+      {:publisho, "~> 1.0", only: :dev, runtime: false},
       {:benchee, "~> 1.0", only: :dev}
     ]
   end
@@ -92,25 +92,7 @@ defmodule LokiLoggerHandler.MixProject do
         "format",
         "credo --strict",
         "test"
-      ],
-      "expublish.major": &expublish("expublish.major", &1),
-      "expublish.minor": &expublish("expublish.minor", &1),
-      "expublish.patch": &expublish("expublish.patch", &1),
-      "expublish.stable": &expublish("expublish.stable", &1),
-      "expublish.rc": &expublish("expublish.rc", &1),
-      "expublish.beta": &expublish("expublish.beta", &1),
-      "expublish.alpha": &expublish("expublish.alpha", &1)
+      ]
     ]
-  end
-
-  defp expublish(task, args) do
-    {branch, 0} = System.cmd("git", ["rev-parse", "--abbrev-ref", "HEAD"])
-    common = ["--tag-prefix", "", "--commit-prefix", "Version", "--branch", String.trim(branch)]
-
-    if "--no-dry-run" in args do
-      Mix.Task.run(task, common ++ args)
-    else
-      Mix.Task.run(task, ["--dry-run" | common] ++ args)
-    end
   end
 end
